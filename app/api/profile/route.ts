@@ -1,5 +1,5 @@
 import { streamObject } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
+import { createGroq } from "@ai-sdk/groq";
 import { NextRequest } from "next/server";
 import {
   projectProfileSchema,
@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
   }
 
   const result = streamObject({
-    model: anthropic("claude-sonnet-4-6"),
+    model: createGroq()("llama-3.3-70b-versatile"),
     schema: projectProfileSchema,
     system: ANALYSIS_SYSTEM_PROMPT,
     prompt: buildAnalysisPrompt(context),

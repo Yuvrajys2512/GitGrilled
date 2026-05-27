@@ -1,5 +1,5 @@
 import { streamText } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
+import { createGroq } from "@ai-sdk/groq";
 import { buildInterviewerSystemPrompt } from "@/lib/interview";
 import type { ProjectProfile } from "@/lib/profile";
 import type { ModelMessage } from "ai";
@@ -14,7 +14,7 @@ export async function POST(req: Request) {
   }
 
   const result = streamText({
-    model: anthropic("claude-sonnet-4-6"),
+    model: createGroq()("llama-3.3-70b-versatile"),
     system: buildInterviewerSystemPrompt(profile),
     messages,
   });

@@ -1,5 +1,5 @@
 import { streamObject } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
+import { createGroq } from "@ai-sdk/groq";
 import { debriefSchema, buildDebriefPrompt, DEBRIEF_SYSTEM_PROMPT } from "@/lib/debrief";
 import type { ProjectProfile } from "@/lib/profile";
 
@@ -18,7 +18,7 @@ export async function POST(req: Request) {
   }
 
   const result = streamObject({
-    model: anthropic("claude-sonnet-4-6"),
+    model: createGroq()("llama-3.3-70b-versatile"),
     schema: debriefSchema,
     system: DEBRIEF_SYSTEM_PROMPT,
     prompt: buildDebriefPrompt(profile, conversation),
