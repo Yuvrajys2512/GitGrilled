@@ -5,6 +5,7 @@ import Link from "next/link";
 import { experimental_useObject as useObject } from "@ai-sdk/react";
 import { projectProfileSchema, type ProjectProfile } from "@/lib/profile";
 import type { RepoContext, AnalyzeError } from "@/lib/types";
+import { InterviewChat } from "./interview-chat";
 
 // ─── Loading spinner ────────────────────────────────────────────────
 function Dots() {
@@ -113,7 +114,19 @@ function DiffBadge({ d }: { d: "medium" | "hard" | "brutal" }) {
 }
 
 // ─── Profile view ────────────────────────────────────────────────────
-function ProfileView({ profile, owner, repo }: { profile: ProjectProfile; owner: string; repo: string }) {
+function ProfileView({
+  profile,
+  owner,
+  repo,
+  isReady,
+  onStart,
+}: {
+  profile: ProjectProfile;
+  owner: string;
+  repo: string;
+  isReady: boolean;
+  onStart: () => void;
+}) {
   return (
     <div className="flex flex-1 flex-col max-w-3xl mx-auto w-full py-8 gap-6">
 
@@ -229,11 +242,16 @@ function ProfileView({ profile, owner, repo }: { profile: ProjectProfile; owner:
       <div className="border border-zinc-800 rounded-lg p-4 bg-zinc-900/40 flex items-center justify-between">
         <div>
           <p className="text-zinc-400 text-sm font-medium">Ready to get grilled?</p>
-          <p className="text-zinc-600 text-xs mt-0.5">Interview engine coming in Phase 4</p>
+          <p className="text-zinc-600 text-xs mt-0.5">
+            {isReady
+              ? `${profile.probeAreas?.length ?? 0} probe areas loaded`
+              : "Generating interview brief..."}
+          </p>
         </div>
         <button
-          disabled
-          className="bg-white text-black px-4 py-2 rounded text-sm font-semibold opacity-30 cursor-not-allowed"
+          onClick={onStart}
+          disabled={!isReady}
+          className="bg-white text-black px-4 py-2 rounded text-sm font-semibold hover:bg-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
         >
           Start Interview →
         </button>
@@ -244,7 +262,7 @@ function ProfileView({ profile, owner, repo }: { profile: ProjectProfile; owner:
 }
 
 // ─── Main component ───────────────────────────────────────────────────
-type Phase = "analyzing" | "profiling" | "ready" | "error";
+type Phase = "analyzing" | "profiling" | "ready" | "interviewing" | "error";
 
 export function SessionClient({ owner, repo }: { owner: string; repo: string }) {
   const [phase, setPhase] = useState<Phase>("analyzing");
@@ -286,28 +304,45 @@ export function SessionClient({ owner, repo }: { owner: string; repo: string }) 
     }
   }, [phase, context, submitProfile]);
 
+  const showHeader = phase !== "interviewing";
+
   return (
     <>
-      <header className="flex items-center justify-between py-4 border-b border-zinc-900 max-w-3xl mx-auto w-full px-4">
-        <Link href="/" className="font-mono text-sm text-zinc-500 hover:text-zinc-300 transition-colors">
-          ← GitGrilled
-        </Link>
-        <span className="font-mono text-xs text-zinc-600 bg-zinc-900 border border-zinc-800 px-2 py-1 rounded">
-          {owner}/{repo}
-        </span>
-      </header>
+      {showHeader && (
+        <header className="flex items-center justify-between py-4 border-b border-zinc-900 max-w-3xl mx-auto w-full px-4 shrink-0">
+          <Link href="/" className="font-mono text-sm text-zinc-500 hover:text-zinc-300 transition-colors">
+            ← GitGrilled
+          </Link>
+          <span className="font-mono text-xs text-zinc-600 bg-zinc-900 border border-zinc-800 px-2 py-1 rounded">
+            {owner}/{repo}
+          </span>
+        </header>
+      )}
 
-      <div className="flex flex-1 flex-col px-4">
+      <div className="flex flex-1 flex-col px-4 min-h-0">
         {phase === "analyzing" && <AnalyzingView owner={owner} repo={repo} />}
         {phase === "profiling" && <ProfilingView owner={owner} repo={repo} />}
-        {phase === "error" && analyzeError && (
-          <ErrorView error={analyzeError} owner={owner} repo={repo} />
+
+        {phase === "error" && (
+          <ErrorView
+            error={analyzeError ?? { code: "FETCH_ERROR", message: "AI analysis failed" }}
+            owner={owner}
+            repo={repo}
+          />
         )}
-        {phase === "error" && !analyzeError && (
-          <ErrorView error={{ code: "FETCH_ERROR", message: "AI analysis failed" }} owner={owner} repo={repo} />
-        )}
+
         {(phase === "ready" || phase === "profiling") && profile && (
           <ProfileView
+            profile={profile as ProjectProfile}
+            owner={owner}
+            repo={repo}
+            isReady={phase === "ready"}
+            onStart={() => setPhase("interviewing")}
+          />
+        )}
+
+        {phase === "interviewing" && profile && (
+          <InterviewChat
             profile={profile as ProjectProfile}
             owner={owner}
             repo={repo}
