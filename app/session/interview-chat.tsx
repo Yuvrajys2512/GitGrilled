@@ -2,6 +2,9 @@
 
 import { useEffect, useRef, useState, FormEvent } from "react";
 import type { ProjectProfile } from "@/lib/profile";
+import type { Debrief } from "@/lib/debrief";
+import { debriefSchema } from "@/lib/debrief";
+import { DebriefView } from "./debrief-view";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -37,9 +40,12 @@ export function InterviewChat({ profile, owner, repo }: Props) {
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [interviewDone, setInterviewDone] = useState(false);
+  const [debrief, setDebrief] = useState<Partial<Debrief> | null>(null);
+  const [debriefStreaming, setDebriefStreaming] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const started = useRef(false);
+  const debriefStarted = useRef(false);
 
   // Auto-scroll
   useEffect(() => {
@@ -120,6 +126,58 @@ export function InterviewChat({ profile, owner, repo }: Props) {
       setIsStreaming(false);
     }
   }
+
+  async function generateDebrief(finalMessages: ChatMessage[]) {
+    if (debriefStarted.current) return;
+    debriefStarted.current = true;
+    setDebriefStreaming(true);
+    setDebrief({});
+
+    try {
+      const res = await fetch("/api/debrief", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profile, conversation: finalMessages }),
+      });
+
+      if (!res.ok || !res.body) return;
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let raw = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        raw += decoder.decode(value, { stream: true });
+        // Attempt partial parse of the streaming JSON object
+        try {
+          const parsed = debriefSchema.partial().safeParse(JSON.parse(raw));
+          if (parsed.success) setDebrief(parsed.data);
+        } catch {
+          // Not valid JSON yet — keep accumulating
+        }
+      }
+
+      // Final parse
+      try {
+        const final = debriefSchema.safeParse(JSON.parse(raw));
+        if (final.success) setDebrief(final.data);
+      } catch {
+        // Leave partial debrief visible
+      }
+    } finally {
+      setDebriefStreaming(false);
+    }
+  }
+
+  // Trigger debrief once interview is done
+  useEffect(() => {
+    if (interviewDone && messages.length > 0) {
+      generateDebrief(messages);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [interviewDone]);
 
   // Kick off first question
   useEffect(() => {
@@ -216,10 +274,21 @@ export function InterviewChat({ profile, owner, repo }: Props) {
           </div>
         )}
 
-        {interviewDone && (
-          <div className="border border-zinc-700 rounded-lg p-4 text-center space-y-1 bg-zinc-900/60">
-            <p className="text-zinc-300 text-sm font-medium">Interview session ended</p>
-            <p className="text-zinc-600 text-xs font-mono">Full scoring and debrief — Phase 5</p>
+        {interviewDone && debrief !== null && (
+          <DebriefView
+            debrief={debrief}
+            isStreaming={debriefStreaming}
+            owner={owner}
+            repo={repo}
+          />
+        )}
+
+        {interviewDone && debrief === null && (
+          <div className="flex items-center gap-2 py-4 text-zinc-600 text-xs font-mono">
+            {[0, 1, 2].map((i) => (
+              <span key={i} className="w-1 h-1 rounded-full bg-zinc-600 animate-bounce" style={{ animationDelay: `${i * 150}ms` }} />
+            ))}
+            <span>Generating your debrief...</span>
           </div>
         )}
 
