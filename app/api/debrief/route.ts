@@ -1,7 +1,19 @@
-import { streamObject } from "ai";
+import { streamText } from "ai";
 import { createGroq } from "@ai-sdk/groq";
-import { debriefSchema, buildDebriefPrompt, DEBRIEF_SYSTEM_PROMPT } from "@/lib/debrief";
+import { buildDebriefPrompt, DEBRIEF_SYSTEM_PROMPT } from "@/lib/debrief";
 import type { ProjectProfile } from "@/lib/profile";
+
+const JSON_SHAPE = `
+Respond with ONLY a valid JSON object — no markdown fences, no explanation. Shape:
+{
+  "overallScore": number (1-10),
+  "verdict": string,
+  "categories": [{ "category": string, "score": number (1-10), "notes": string }],
+  "strongAreas": string[],
+  "weakAreas": string[],
+  "fumbledQuestions": [{ "question": string, "whatWentWrong": string }],
+  "studyTopics": string[]
+}`;
 
 interface ConversationTurn {
   role: "user" | "assistant";
@@ -17,10 +29,9 @@ export async function POST(req: Request) {
     return Response.json({ error: "Missing profile or conversation" }, { status: 400 });
   }
 
-  const result = streamObject({
+  const result = streamText({
     model: createGroq()("llama-3.3-70b-versatile"),
-    schema: debriefSchema,
-    system: DEBRIEF_SYSTEM_PROMPT,
+    system: DEBRIEF_SYSTEM_PROMPT + JSON_SHAPE,
     prompt: buildDebriefPrompt(profile, conversation),
   });
 
