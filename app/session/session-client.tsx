@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { experimental_useObject as useObject } from "@ai-sdk/react";
 import { projectProfileSchema, type ProjectProfile } from "@/lib/profile";
 import type { RepoContext, AnalyzeError } from "@/lib/types";
 import { InterviewChat } from "./interview-chat";
@@ -267,15 +266,9 @@ type Phase = "analyzing" | "profiling" | "ready" | "interviewing" | "error";
 export function SessionClient({ owner, repo }: { owner: string; repo: string }) {
   const [phase, setPhase] = useState<Phase>("analyzing");
   const [context, setContext] = useState<RepoContext | null>(null);
+  const [profile, setProfile] = useState<ProjectProfile | null>(null);
   const [analyzeError, setAnalyzeError] = useState<AnalyzeError | null>(null);
-  const profileSubmitted = useRef(false);
-
-  const { object: profile, submit: submitProfile } = useObject({
-    api: "/api/profile",
-    schema: projectProfileSchema,
-    onFinish: () => setPhase("ready"),
-    onError: () => setPhase("error"),
-  });
+  const profileStarted = useRef(false);
 
   // Phase 2: fetch repo context
   useEffect(() => {
@@ -298,11 +291,47 @@ export function SessionClient({ owner, repo }: { owner: string; repo: string }) 
 
   // Phase 3: generate profile once context is ready
   useEffect(() => {
-    if (phase === "profiling" && context && !profileSubmitted.current) {
-      profileSubmitted.current = true;
-      submitProfile(context);
-    }
-  }, [phase, context, submitProfile]);
+    if (phase !== "profiling" || !context || profileStarted.current) return;
+    profileStarted.current = true;
+
+    (async () => {
+      try {
+        const res = await fetch("/api/profile", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(context),
+        });
+        if (!res.ok || !res.body) {
+          setPhase("error");
+          return;
+        }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let raw = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          raw += decoder.decode(value, { stream: true });
+        }
+        // Strip markdown code fences the model sometimes adds despite instructions
+        const cleaned = raw.trim()
+          .replace(/^```(?:json)?\s*\n?/, "")
+          .replace(/\n?```\s*$/, "")
+          .trim();
+        const parsed = projectProfileSchema.safeParse(JSON.parse(cleaned));
+        if (parsed.success) {
+          setProfile(parsed.data);
+          setPhase("ready");
+        } else {
+          setAnalyzeError({ code: "FETCH_ERROR", message: "Profile parse failed" });
+          setPhase("error");
+        }
+      } catch {
+        setAnalyzeError({ code: "FETCH_ERROR", message: "Profile generation failed" });
+        setPhase("error");
+      }
+    })();
+  }, [phase, context]);
 
   const showHeader = phase !== "interviewing";
 
@@ -331,21 +360,23 @@ export function SessionClient({ owner, repo }: { owner: string; repo: string }) 
           />
         )}
 
-        {(phase === "ready" || phase === "profiling") && profile && (
+        {phase === "ready" && profile && (
           <ProfileView
-            profile={profile as ProjectProfile}
+            profile={profile}
             owner={owner}
             repo={repo}
-            isReady={phase === "ready"}
+            isReady={true}
             onStart={() => setPhase("interviewing")}
           />
         )}
 
-        {phase === "interviewing" && profile && (
+        {phase === "interviewing" && profile && context && (
           <InterviewChat
-            profile={profile as ProjectProfile}
+            profile={profile}
             owner={owner}
             repo={repo}
+            branch={context.defaultBranch}
+            fileTree={context.fileTree}
           />
         )}
       </div>

@@ -1,6 +1,9 @@
 import type { ProjectProfile } from "./profile";
 
-export function buildInterviewerSystemPrompt(profile: ProjectProfile): string {
+export function buildInterviewerSystemPrompt(
+  profile: ProjectProfile,
+  fileTree?: string
+): string {
   const probeList = profile.probeAreas
     .map(
       (a, i) =>
@@ -40,6 +43,23 @@ PROBE AREAS — work through these
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ${probeList}
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CODEBASE ACCESS — you can read the real code
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+You have live tools to inspect the candidate's ACTUAL repository:
+• listFiles(prefix?) — discover what files exist
+• readFile(path)     — read a file's real source, with line numbers
+• searchCode(query)  — find where something is implemented
+
+USE THEM. The brief above is a summary — the code is the ground truth.
+- Before grilling on any implementation detail, readFile the relevant file so your
+  question is anchored to real lines. Cite them: "In lib/github.ts, fetchFileContent
+  slices to MAX_FILE_CHARS (line 142) — what happens to a 200KB file?"
+- When the candidate claims how something works, verify it against the file. If their
+  answer contradicts the code, quote the exact path:line and call it out:
+  "That's not what the code does. github.ts:142 slices and drops the rest. Try again."
+- NEVER invent code that isn't there. If you haven't read a file, read it before asking.
+${fileTree ? `\nRepo structure (use readFile for full contents):\n${fileTree}\n` : ""}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 INTERVIEW RULES — follow these exactly
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

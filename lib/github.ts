@@ -66,7 +66,7 @@ function getFilePriority(path: string): number {
   return 50 + depth;
 }
 
-function isExcluded(path: string): boolean {
+export function isExcluded(path: string): boolean {
   const parts = path.split("/");
   for (const part of parts.slice(0, -1)) {
     if (EXCLUDED_DIRS.has(part) || part.startsWith(".")) return true;
@@ -207,7 +207,13 @@ export async function buildRepoContext(
     }
   }
 
-  const treeDisplay = buildFileTree(eligible.slice(0, 150).map((f) => f.path));
+  // Build the tree from ALL non-excluded files (not just the 35 we fetched),
+  // so the analyzer and the interviewer see the real repo structure.
+  const treePaths = allBlobs
+    .filter((f) => !isExcluded(f.path))
+    .map((f) => f.path)
+    .slice(0, 200);
+  const treeDisplay = buildFileTree(treePaths);
 
   return {
     owner,
@@ -223,4 +229,51 @@ export async function buildRepoContext(
     totalFiles: allBlobs.length,
     includedFiles: files.length,
   };
+}
+
+// ─── Live tool helpers (used by the interviewer to read the repo on demand) ──
+
+const MAX_TOOL_FILE_CHARS = 60_000;
+
+/**
+ * List every non-excluded file path in the repo (the full set, not the capped
+ * analysis subset). Used by the interviewer's listFiles/searchCode tools.
+ */
+export async function listRepoPaths(
+  owner: string,
+  repo: string
+): Promise<{ defaultBranch: string; paths: string[] }> {
+  const meta = await ghFetch(`${GITHUB_API}/repos/${owner}/${repo}`);
+  const defaultBranch: string = meta.default_branch;
+  const treeData = await ghFetch(
+    `${GITHUB_API}/repos/${owner}/${repo}/git/trees/${defaultBranch}?recursive=1`
+  );
+  const paths = (treeData.tree as { type: string; path: string }[])
+    .filter((item) => item.type === "blob")
+    .map((item) => item.path)
+    .filter((p) => !isExcluded(p))
+    .sort((a, b) => getFilePriority(a) - getFilePriority(b));
+  return { defaultBranch, paths };
+}
+
+/**
+ * Fetch the raw, untruncated-by-analysis content of a single file. Returns null
+ * for missing/binary files. Capped at MAX_TOOL_FILE_CHARS to bound token cost.
+ */
+export async function fetchRawFile(
+  owner: string,
+  repo: string,
+  branch: string,
+  path: string
+): Promise<string | null> {
+  try {
+    const url = `${RAW_BASE}/${owner}/${repo}/${branch}/${encodeURI(path)}`;
+    const res = await fetch(url, { next: { revalidate: 300 } });
+    if (!res.ok) return null;
+    const raw = await res.text();
+    if (raw.includes("\x00")) return null;
+    return raw.length > MAX_TOOL_FILE_CHARS ? raw.slice(0, MAX_TOOL_FILE_CHARS) : raw;
+  } catch {
+    return null;
+  }
 }

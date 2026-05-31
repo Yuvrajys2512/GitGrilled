@@ -33,9 +33,11 @@ interface Props {
   profile: ProjectProfile;
   owner: string;
   repo: string;
+  branch: string;
+  fileTree: string;
 }
 
-export function InterviewChat({ profile, owner, repo }: Props) {
+export function InterviewChat({ profile, owner, repo, branch, fileTree }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -79,6 +81,10 @@ export function InterviewChat({ profile, owner, repo }: Props) {
           // Only send role + content — ModelMessage shape
           messages: outgoing.map((m) => ({ role: m.role, content: m.content })),
           profile,
+          owner,
+          repo,
+          branch,
+          fileTree,
         }),
       });
 
@@ -159,9 +165,13 @@ export function InterviewChat({ profile, owner, repo }: Props) {
         }
       }
 
-      // Final parse
+      // Final parse — strip markdown fences the model sometimes adds
       try {
-        const final = debriefSchema.safeParse(JSON.parse(raw));
+        const cleaned = raw.trim()
+          .replace(/^```(?:json)?\s*\n?/, "")
+          .replace(/\n?```\s*$/, "")
+          .trim();
+        const final = debriefSchema.safeParse(JSON.parse(cleaned));
         if (final.success) setDebrief(final.data);
       } catch {
         // Leave partial debrief visible
