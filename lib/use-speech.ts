@@ -121,6 +121,36 @@ export function useSpeaker() {
   const reqId = useRef(0);
   const hasSynth = typeof window !== "undefined" && "speechSynthesis" in window;
 
+  // Web Audio graph for the talking avatar: played TTS is routed through an
+  // analyser so the avatar can lip-sync to real amplitude in real time.
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+
+  const ensureGraph = useCallback(() => {
+    if (typeof window === "undefined") return;
+    if (!audioCtxRef.current) {
+      const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctx) return;
+      const ctx = new Ctx();
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.6;
+      analyser.connect(ctx.destination);
+      audioCtxRef.current = ctx;
+      analyserRef.current = analyser;
+    }
+  }, []);
+
+  // Call from a user gesture (toggle/start) to satisfy autoplay policies.
+  const unlockAudio = useCallback(() => {
+    ensureGraph();
+    if (audioCtxRef.current?.state === "suspended") {
+      void audioCtxRef.current.resume();
+    }
+  }, [ensureGraph]);
+
+  const getAnalyser = useCallback(() => analyserRef.current, []);
+
   useEffect(() => {
     setSupported(true);
     if (!hasSynth) return;
@@ -197,6 +227,22 @@ export function useSpeaker() {
         urlRef.current = url;
         const audio = new Audio(url);
         audioRef.current = audio;
+
+        // Route through the analyser graph so the avatar can lip-sync. The blob
+        // is same-origin (object URL), so the audio isn't tainted.
+        ensureGraph();
+        if (audioCtxRef.current && analyserRef.current) {
+          if (audioCtxRef.current.state === "suspended") {
+            void audioCtxRef.current.resume();
+          }
+          try {
+            const srcNode = audioCtxRef.current.createMediaElementSource(audio);
+            srcNode.connect(analyserRef.current);
+          } catch {
+            // If routing fails for any reason, the audio still plays normally.
+          }
+        }
+
         audio.onended = () => {
           if (id === reqId.current) setSpeaking(false);
           cleanupAudio();
@@ -211,8 +257,8 @@ export function useSpeaker() {
         browserSpeak(text);
       }
     },
-    [cancel, cleanupAudio, browserSpeak]
+    [cancel, cleanupAudio, browserSpeak, ensureGraph]
   );
 
-  return { supported, speaking, speak, cancel };
+  return { supported, speaking, speak, cancel, getAnalyser, unlockAudio };
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, FormEvent } from "react";
-import { Mic, Volume2, VolumeX } from "lucide-react";
+import { Mic, Volume2, VolumeX, Video, VideoOff } from "lucide-react";
 import type { ProjectProfile } from "@/lib/profile";
 import type { Debrief } from "@/lib/debrief";
 import { debriefSchema } from "@/lib/debrief";
@@ -9,6 +9,14 @@ import { useDictation, useSpeaker } from "@/lib/use-speech";
 import type { PersonaId } from "@/lib/personas";
 import { DebriefView } from "./debrief-view";
 import { MessageContent } from "./message-content";
+import { Avatar } from "./avatar";
+import { WebcamPip } from "./webcam-pip";
+
+function formatClock(sec: number) {
+  const m = Math.floor(sec / 60).toString().padStart(2, "0");
+  const s = (sec % 60).toString().padStart(2, "0");
+  return `${m}:${s}`;
+}
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -50,12 +58,16 @@ export function InterviewChat({ profile, owner, repo, branch, fileTree, persona 
   const [debrief, setDebrief] = useState<Partial<Debrief> | null>(null);
   const [debriefStreaming, setDebriefStreaming] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
+  const [videoMode, setVideoMode] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const started = useRef(false);
   const debriefStarted = useRef(false);
   const voiceModeRef = useRef(false);
   voiceModeRef.current = voiceMode;
+  const videoModeRef = useRef(false);
+  videoModeRef.current = videoMode;
 
   // Speech-to-text: dictate answers straight into the input.
   const dictation = useDictation((chunk) => {
@@ -137,8 +149,8 @@ export function InterviewChat({ profile, owner, repo, branch, fileTree, persona 
         });
       }
 
-      // In voice mode, read the interviewer's question aloud once it's complete.
-      if (voiceModeRef.current) {
+      // In voice or video mode, read the interviewer's question aloud once done.
+      if (voiceModeRef.current || videoModeRef.current) {
         const spoken = cleanContent(full);
         if (spoken) speaker.speak(spoken);
       }
@@ -219,6 +231,7 @@ export function InterviewChat({ profile, owner, repo, branch, fileTree, persona 
   function toggleVoiceMode() {
     setVoiceMode((on) => {
       if (on) speaker.cancel(); // turning off — silence any current speech
+      else speaker.unlockAudio(); // gesture — satisfy autoplay policy
       return !on;
     });
   }
@@ -228,12 +241,37 @@ export function InterviewChat({ profile, owner, repo, branch, fileTree, persona 
     else dictation.start();
   }
 
+  function toggleVideoMode() {
+    setVideoMode((on) => {
+      const next = !on;
+      if (next) {
+        speaker.unlockAudio(); // gesture — satisfy autoplay policy
+        // Speak the current question immediately on entering video mode.
+        const lastA = [...messages].reverse().find((m) => m.role === "assistant");
+        const q = lastA && cleanContent(lastA.content);
+        if (q) speaker.speak(q);
+      } else {
+        speaker.cancel();
+      }
+      return next;
+    });
+  }
+
+  // Interview clock (counts up while in video mode).
+  useEffect(() => {
+    if (!videoMode) return;
+    const id = setInterval(() => setElapsed((e) => e + 1), 1000);
+    return () => clearInterval(id);
+  }, [videoMode]);
+
   const visibleMessages = messages.filter((m) => m.content !== "__BEGIN__");
   const userCount = messages.filter(
     (m) => m.role === "user" && m.content !== "__BEGIN__"
   ).length;
   const lastRole = visibleMessages[visibleMessages.length - 1]?.role;
   const showTyping = isStreaming && lastRole === "user";
+  const lastAssistant = [...visibleMessages].reverse().find((m) => m.role === "assistant");
+  const currentQuestion = lastAssistant ? cleanContent(lastAssistant.content) : "";
 
   return (
     <div className="flex flex-1 flex-col max-w-3xl mx-auto w-full min-h-0">
@@ -264,11 +302,57 @@ export function InterviewChat({ profile, owner, repo, branch, fileTree, persona 
               <span className="hidden sm:inline">{speaker.speaking ? "speaking…" : "voice"}</span>
             </button>
           )}
+          {!interviewDone && (
+            <button
+              onClick={toggleVideoMode}
+              title={videoMode ? "Exit video interview" : "Start video interview"}
+              className={`flex items-center gap-1.5 text-xs font-mono px-2 py-1 rounded border transition-colors ${
+                videoMode
+                  ? "text-amber-400 border-amber-800/60 bg-amber-950/30"
+                  : "text-zinc-600 border-zinc-800 hover:text-zinc-400 hover:border-zinc-700"
+              }`}
+            >
+              {videoMode ? <VideoOff className="w-3 h-3" /> : <Video className="w-3 h-3" />}
+              <span className="hidden sm:inline">video</span>
+            </button>
+          )}
           <span className="text-xs font-mono text-zinc-700">{owner}/{repo}</span>
         </div>
       </div>
 
-      {/* Messages */}
+      {/* Video interview stage */}
+      {videoMode && !interviewDone ? (
+        <div className="flex-1 flex flex-col min-h-0 relative">
+          <div className="flex items-center justify-between mb-2 shrink-0">
+            <span className="flex items-center gap-2 text-xs font-mono text-zinc-500">
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+              REC <span className="text-zinc-600">{formatClock(elapsed)}</span>
+            </span>
+            <span className="text-xs font-mono text-zinc-600">Exchange {userCount}</span>
+          </div>
+
+          <div className="flex-1 flex flex-col items-center justify-center gap-6 min-h-0 overflow-y-auto py-4">
+            <Avatar
+              getAnalyser={speaker.getAnalyser}
+              speaking={speaker.speaking}
+              thinking={isStreaming && !speaker.speaking}
+              personaId={persona}
+            />
+            <div className="max-w-xl text-center min-h-[3rem] px-4">
+              {currentQuestion ? (
+                <p className="text-zinc-200 text-base leading-relaxed">{currentQuestion}</p>
+              ) : (
+                <p className="text-zinc-600 text-sm font-mono">connecting…</p>
+              )}
+            </div>
+          </div>
+
+          <div className="absolute bottom-3 right-3">
+            <WebcamPip />
+          </div>
+        </div>
+      ) : (
+      /* Messages */
       <div className="flex-1 overflow-y-auto space-y-6 pb-4">
 
         {messages.length === 0 && (
@@ -338,6 +422,7 @@ export function InterviewChat({ profile, owner, repo, branch, fileTree, persona 
 
         <div ref={bottomRef} />
       </div>
+      )}
 
       {/* Input */}
       {!interviewDone && (

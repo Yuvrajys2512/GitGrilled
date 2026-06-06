@@ -5,6 +5,24 @@ impressive, ranked by impact-per-effort.
 
 ---
 
+## Tier 0 — Wow factor ("damn, you built that?")
+
+### AI video interviewer (talking avatar) ✅ *(done)*
+Turns the interview into a mock *video* call. A stylized AI interviewer face
+lip-syncs in real time to the Orpheus TTS, your webcam sits in the corner, and
+call chrome (REC dot, timer, persona-themed interviewer) sells the illusion.
+
+Shipped: `useSpeaker` routes TTS audio through a Web Audio analyser; `avatar.tsx`
+samples amplitude each frame to drive the mouth (with a synthetic fallback for
+browser TTS) and blinks on an idle timer, themed per persona; `webcam-pip.tsx`
+shows the candidate's camera with graceful permission handling; a "video" toggle
+in `interview-chat.tsx` swaps in the video-call layout with a live caption of the
+current question. Free, real-time, zero new API keys.
+
+Future wow ideas (not built): live coding challenge that runs your code in a
+Vercel Sandbox; "it planted a bug in your own code"; panel interview (all
+personas at once); live BS/confidence meter; roast-mode share card.
+
 ## Tier 1 — "Wow in the first 30 seconds" (demo wins)
 
 ### 1. Voice mode 🎙️ *(in progress)*
