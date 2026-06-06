@@ -1,7 +1,11 @@
 import { NextRequest } from "next/server";
 import { buildRepoContext } from "@/lib/github";
+import { enforce } from "@/lib/rate-limit";
 
 export async function GET(req: NextRequest) {
+  const limited = await enforce(req, "analyze", 15, "code");
+  if (limited) return limited;
+
   const repo = req.nextUrl.searchParams.get("repo");
 
   if (!repo) {

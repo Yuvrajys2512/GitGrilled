@@ -302,6 +302,11 @@ export function SessionClient({ owner, repo }: { owner: string; repo: string }) 
           body: JSON.stringify(context),
         });
         if (!res.ok || !res.body) {
+          setAnalyzeError(
+            res.status === 429
+              ? { code: "RATE_LIMITED" }
+              : { code: "FETCH_ERROR", message: "Profile generation failed" }
+          );
           setPhase("error");
           return;
         }

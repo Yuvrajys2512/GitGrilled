@@ -1,6 +1,7 @@
 import { streamText } from "ai";
 import { createGroq } from "@ai-sdk/groq";
 import { buildDebriefPrompt, DEBRIEF_SYSTEM_PROMPT } from "@/lib/debrief";
+import { enforce } from "@/lib/rate-limit";
 import type { ProjectProfile } from "@/lib/profile";
 
 const JSON_SHAPE = `
@@ -21,6 +22,9 @@ interface ConversationTurn {
 }
 
 export async function POST(req: Request) {
+  const limited = await enforce(req, "debrief", 10);
+  if (limited) return limited;
+
   const body = await req.json();
   const profile: ProjectProfile = body.profile;
   const conversation: ConversationTurn[] = body.conversation ?? [];

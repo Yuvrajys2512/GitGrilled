@@ -73,10 +73,16 @@ string — fragile, and one malformed token fails the whole session. The AI SDK'
 structured output with our existing Zod `projectProfileSchema` makes this reliable
 and lets us stream profile fields as they fill in.
 
-### 8. Finish Phase 6
-No rate limiting exists yet — `/api/analyze`, `/api/profile`, `/api/interview`
-are all open and each burns GitHub quota + Groq tokens. Add rate limiting
-(Upstash Redis), graceful 429 handling, and error boundaries.
+### 8. Finish Phase 6 — rate limiting + error boundaries ✅ *(done)*
+All API routes were open and each burns GitHub quota + Groq tokens.
+
+Shipped: `lib/rate-limit.ts` — a per-client, per-route limiter that uses Upstash
+Redis when configured and falls back to in-memory otherwise (never throws).
+Applied to every route (`analyze` 15/min, `profile` 12, `interview` 40,
+`debrief` 10, `speak` 40, `file` 80) returning 429 + `Retry-After`. Client shows
+rate-limit messaging, and `app/error.tsx` + `app/session/error.tsx` add error
+boundaries. Remaining Phase 6 polish: mobile layout pass, SEO/OG on the landing
+page, prod smoke test.
 
 ### 9. Smarter ingestion
 `MAX_FILES = 35` + a static priority map misses interesting files in large repos.

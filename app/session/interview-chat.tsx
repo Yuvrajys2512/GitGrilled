@@ -106,12 +106,13 @@ export function InterviewChat({ profile, owner, repo, branch, fileTree }: Props)
       });
 
       if (!res.ok || !res.body) {
+        const msg =
+          res.status === 429
+            ? "You're going too fast — wait a moment before sending again."
+            : "Something went wrong. Try again.";
         setMessages((prev) => {
           const updated = [...prev];
-          updated[updated.length - 1] = {
-            role: "assistant",
-            content: "Something went wrong. Try again.",
-          };
+          updated[updated.length - 1] = { role: "assistant", content: msg };
           return updated;
         });
         return;

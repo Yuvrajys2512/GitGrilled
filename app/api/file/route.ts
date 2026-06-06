@@ -1,8 +1,12 @@
 import { fetchRawFile } from "@/lib/github";
+import { enforce } from "@/lib/rate-limit";
 
 // Fetches the raw source of a single repo file so the chat can render the lines
 // behind a code citation. GET /api/file?repo=owner/name&branch=main&path=lib/x.ts
 export async function GET(req: Request) {
+  const limited = await enforce(req, "file", 80);
+  if (limited) return limited;
+
   const { searchParams } = new URL(req.url);
   const repo = searchParams.get("repo") ?? "";
   const branch = searchParams.get("branch") ?? "main";

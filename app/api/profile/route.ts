@@ -2,6 +2,7 @@ import { streamText } from "ai";
 import { createGroq } from "@ai-sdk/groq";
 import { NextRequest } from "next/server";
 import { buildAnalysisPrompt, ANALYSIS_SYSTEM_PROMPT } from "@/lib/profile";
+import { enforce } from "@/lib/rate-limit";
 import type { RepoContext } from "@/lib/types";
 
 const JSON_SHAPE = `
@@ -16,6 +17,9 @@ Respond with ONLY a valid JSON object — no markdown fences, no explanation. Sh
 }`;
 
 export async function POST(req: NextRequest) {
+  const limited = await enforce(req, "profile", 12);
+  if (limited) return limited;
+
   let context: RepoContext;
 
   try {

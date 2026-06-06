@@ -2,10 +2,14 @@ import { streamText, stepCountIs } from "ai";
 import { createGroq } from "@ai-sdk/groq";
 import { buildInterviewerSystemPrompt } from "@/lib/interview";
 import { createRepoTools } from "@/lib/repo-tools";
+import { enforce } from "@/lib/rate-limit";
 import type { ProjectProfile } from "@/lib/profile";
 import type { ModelMessage } from "ai";
 
 export async function POST(req: Request) {
+  const limited = await enforce(req, "interview", 40);
+  if (limited) return limited;
+
   const body = await req.json();
   const messages: ModelMessage[] = body.messages ?? [];
   const profile: ProjectProfile = body.profile;

@@ -3,10 +3,15 @@
 // On any failure (no key, model terms not accepted, etc.) we return a
 // non-2xx status so the client falls back to the browser's speechSynthesis.
 
+import { enforce } from "@/lib/rate-limit";
+
 const GROQ_SPEECH_URL = "https://api.groq.com/openai/v1/audio/speech";
 const MAX_TTS_CHARS = 1200; // questions are short; cap to bound latency/cost
 
 export async function POST(req: Request) {
+  const limited = await enforce(req, "speak", 40);
+  if (limited) return limited;
+
   const key = process.env.GROQ_API_KEY;
   if (!key) return new Response("TTS not configured", { status: 503 });
 
