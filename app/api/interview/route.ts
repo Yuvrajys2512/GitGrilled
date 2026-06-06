@@ -4,6 +4,7 @@ import { buildInterviewerSystemPrompt } from "@/lib/interview";
 import { createRepoTools } from "@/lib/repo-tools";
 import { enforce } from "@/lib/rate-limit";
 import type { ProjectProfile } from "@/lib/profile";
+import type { PersonaId } from "@/lib/personas";
 import type { ModelMessage } from "ai";
 
 export async function POST(req: Request) {
@@ -17,6 +18,7 @@ export async function POST(req: Request) {
   const repo: string = body.repo;
   const branch: string = body.branch ?? "main";
   const fileTree: string | undefined = body.fileTree;
+  const persona: PersonaId | undefined = body.persona;
 
   if (!profile) {
     return Response.json({ error: "Missing profile" }, { status: 400 });
@@ -29,7 +31,7 @@ export async function POST(req: Request) {
 
   const result = streamText({
     model: createGroq()("llama-3.3-70b-versatile"),
-    system: buildInterviewerSystemPrompt(profile, fileTree),
+    system: buildInterviewerSystemPrompt(profile, fileTree, persona),
     messages,
     tools,
     // Allow the interviewer to read/search across a few tool calls before

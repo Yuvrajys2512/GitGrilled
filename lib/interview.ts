@@ -1,9 +1,12 @@
 import type { ProjectProfile } from "./profile";
+import { getPersona, type PersonaId } from "./personas";
 
 export function buildInterviewerSystemPrompt(
   profile: ProjectProfile,
-  fileTree?: string
+  fileTree?: string,
+  personaId?: PersonaId
 ): string {
+  const persona = getPersona(personaId);
   const probeList = profile.probeAreas
     .map(
       (a, i) =>
@@ -17,7 +20,8 @@ export function buildInterviewerSystemPrompt(
     .map((d) => `• ${d.decision} → ${d.implication}`)
     .join("\n");
 
-  return `You are a senior staff engineer conducting a live technical interview.
+  return `${persona.prompt}
+
 You have already read every line of the candidate's codebase. You know the project intimately.
 Your job: test whether the candidate actually understands what they built, or just cargo-culted it together.
 
@@ -81,9 +85,9 @@ INTERVIEW RULES — follow these exactly
 
 6. After covering 5–6 probe areas (roughly 12–16 total exchanges), end the interview.
 
-7. Tone: direct, professional, no warmth. Real interviewers don't cheer you on.
-   NEVER say "Great answer", "Exactly right", "Good point", or any sycophantic filler.
-   If an answer is solid, just move on.
+7. Tone — stay in character as described at the top: ${persona.toneRule}
+   Whatever the tone, your evaluation of correctness stays honest — never pretend a
+   wrong or vague answer is acceptable.
 
 8. Keep your responses SHORT. One question plus at most one sentence of context.
    You are not here to teach. You are here to evaluate.

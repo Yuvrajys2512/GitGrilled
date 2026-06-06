@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { decodeScorecard, verdictLabel } from "@/lib/scorecard";
+import { verdictLabel } from "@/lib/scorecard";
+import { loadScorecard } from "@/lib/load-scorecard";
 import { ScorecardView } from "./scorecard-view";
 
 function siteUrl(): string {
@@ -9,20 +10,25 @@ function siteUrl(): string {
   return "http://localhost:3000";
 }
 
-type SearchParams = Promise<{ d?: string }>;
+type SearchParams = Promise<{ d?: string; id?: string }>;
+
+function ogImageUrl(id?: string, d?: string): string {
+  if (id) return `${siteUrl()}/api/og?id=${encodeURIComponent(id)}`;
+  return `${siteUrl()}/api/og?d=${encodeURIComponent(d ?? "")}`;
+}
 
 export async function generateMetadata({
   searchParams,
 }: {
   searchParams: SearchParams;
 }): Promise<Metadata> {
-  const { d } = await searchParams;
-  const card = d ? decodeScorecard(d) : null;
+  const { d, id } = await searchParams;
+  const card = await loadScorecard({ id, d });
   if (!card) return { title: "GitGrilled — Scorecard" };
 
   const title = `${card.owner}/${card.repo} — ${verdictLabel(card.score)} (${card.score}/10)`;
   const description = card.verdict || "Got grilled on my own code by GitGrilled.";
-  const ogImage = `${siteUrl()}/api/og?d=${encodeURIComponent(d!)}`;
+  const ogImage = ogImageUrl(id, d);
 
   return {
     title,
@@ -46,7 +52,7 @@ export default async function ScorecardPage({
 }: {
   searchParams: SearchParams;
 }) {
-  const { d } = await searchParams;
-  const card = d ? decodeScorecard(d) : null;
+  const { d, id } = await searchParams;
+  const card = await loadScorecard({ id, d });
   return <ScorecardView card={card} />;
 }

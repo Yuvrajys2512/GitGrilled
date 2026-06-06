@@ -6,6 +6,7 @@ import type { ProjectProfile } from "@/lib/profile";
 import type { Debrief } from "@/lib/debrief";
 import { debriefSchema } from "@/lib/debrief";
 import { useDictation, useSpeaker } from "@/lib/use-speech";
+import type { PersonaId } from "@/lib/personas";
 import { DebriefView } from "./debrief-view";
 import { MessageContent } from "./message-content";
 
@@ -38,9 +39,10 @@ interface Props {
   repo: string;
   branch: string;
   fileTree: string;
+  persona: PersonaId;
 }
 
-export function InterviewChat({ profile, owner, repo, branch, fileTree }: Props) {
+export function InterviewChat({ profile, owner, repo, branch, fileTree, persona }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -102,6 +104,7 @@ export function InterviewChat({ profile, owner, repo, branch, fileTree }: Props)
           repo,
           branch,
           fileTree,
+          persona,
         }),
       });
 

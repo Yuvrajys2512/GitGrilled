@@ -41,8 +41,27 @@ export function DebriefView({ debrief, isStreaming, owner, repo }: Props) {
   const [shareState, setShareState] = useState<"idle" | "copied">("idle");
 
   async function handleShare() {
-    const token = encodeScorecard(scorecardFromDebrief(owner, repo, debrief));
-    const url = `${window.location.origin}/scorecard?d=${token}`;
+    const card = scorecardFromDebrief(owner, repo, debrief);
+
+    // Prefer a short /scorecard?id= link (stored in Upstash). Fall back to the
+    // self-contained ?d= base64 token when storage isn't configured.
+    let url = "";
+    try {
+      const res = await fetch("/api/scorecard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(card),
+      });
+      if (res.ok) {
+        const { id } = await res.json();
+        if (id) url = `${window.location.origin}/scorecard?id=${id}`;
+      }
+    } catch {
+      // ignore — fall through to the long token
+    }
+    if (!url) {
+      url = `${window.location.origin}/scorecard?d=${encodeScorecard(card)}`;
+    }
     // Prefer the native share sheet on mobile; fall back to clipboard.
     if (navigator.share) {
       try {

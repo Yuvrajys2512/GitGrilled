@@ -9,6 +9,7 @@ export interface RepoContext {
   repo: string;
   description: string | null;
   defaultBranch: string;
+  sha: string; // tree SHA of the analyzed commit — used as a cache key
   language: string | null;
   stars: number;
   readme: string | null;

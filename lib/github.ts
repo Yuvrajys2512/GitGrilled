@@ -220,6 +220,7 @@ export async function buildRepoContext(
     repo,
     description: meta.description ?? null,
     defaultBranch,
+    sha: (treeData.sha as string) ?? defaultBranch,
     language: meta.language ?? null,
     stars: meta.stargazers_count ?? 0,
     readme,

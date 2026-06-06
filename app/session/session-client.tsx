@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { projectProfileSchema, type ProjectProfile } from "@/lib/profile";
 import type { RepoContext, AnalyzeError } from "@/lib/types";
+import { PERSONAS, DEFAULT_PERSONA, type PersonaId } from "@/lib/personas";
 import { InterviewChat } from "./interview-chat";
 
 // ─── Loading spinner ────────────────────────────────────────────────
@@ -118,12 +119,16 @@ function ProfileView({
   owner,
   repo,
   isReady,
+  persona,
+  onPersonaChange,
   onStart,
 }: {
   profile: ProjectProfile;
   owner: string;
   repo: string;
   isReady: boolean;
+  persona: PersonaId;
+  onPersonaChange: (id: PersonaId) => void;
   onStart: () => void;
 }) {
   return (
@@ -237,6 +242,35 @@ function ProfileView({
         </section>
       )}
 
+      {/* Persona picker */}
+      <section className="space-y-2">
+        <h3 className="text-zinc-500 text-xs font-mono uppercase tracking-widest">Pick your interviewer</h3>
+        <div className="grid gap-2 sm:grid-cols-3">
+          {PERSONAS.map((p) => {
+            const selected = p.id === persona;
+            return (
+              <button
+                key={p.id}
+                onClick={() => onPersonaChange(p.id)}
+                className={`text-left rounded-lg border p-3 transition-colors ${
+                  selected
+                    ? "border-amber-600 bg-amber-950/30"
+                    : "border-zinc-800 bg-zinc-900 hover:border-zinc-700"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-base leading-none">{p.emoji}</span>
+                  <span className={`text-sm font-medium ${selected ? "text-amber-300" : "text-zinc-200"}`}>
+                    {p.name}
+                  </span>
+                </div>
+                <p className="text-zinc-500 text-xs mt-1 leading-snug">{p.tagline}</p>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
       {/* CTA */}
       <div className="border border-zinc-800 rounded-lg p-4 bg-zinc-900/40 flex items-center justify-between">
         <div>
@@ -268,6 +302,7 @@ export function SessionClient({ owner, repo }: { owner: string; repo: string }) 
   const [context, setContext] = useState<RepoContext | null>(null);
   const [profile, setProfile] = useState<ProjectProfile | null>(null);
   const [analyzeError, setAnalyzeError] = useState<AnalyzeError | null>(null);
+  const [persona, setPersona] = useState<PersonaId>(DEFAULT_PERSONA);
   const profileStarted = useRef(false);
 
   // Phase 2: fetch repo context
@@ -359,6 +394,8 @@ export function SessionClient({ owner, repo }: { owner: string; repo: string }) 
             owner={owner}
             repo={repo}
             isReady={true}
+            persona={persona}
+            onPersonaChange={setPersona}
             onStart={() => setPhase("interviewing")}
           />
         )}
@@ -370,6 +407,7 @@ export function SessionClient({ owner, repo }: { owner: string; repo: string }) 
             repo={repo}
             branch={context.defaultBranch}
             fileTree={context.fileTree}
+            persona={persona}
           />
         )}
       </div>

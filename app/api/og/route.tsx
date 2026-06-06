@@ -1,5 +1,6 @@
 import { ImageResponse } from "next/og";
-import { decodeScorecard, verdictLabel } from "@/lib/scorecard";
+import { verdictLabel } from "@/lib/scorecard";
+import { loadScorecard } from "@/lib/load-scorecard";
 
 export const runtime = "nodejs";
 
@@ -11,7 +12,10 @@ function scoreColor(score: number): string {
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  const card = decodeScorecard(searchParams.get("d") ?? "");
+  const card = await loadScorecard({
+    id: searchParams.get("id") ?? undefined,
+    d: searchParams.get("d") ?? undefined,
+  });
 
   const owner = card?.owner ?? "unknown";
   const repo = card?.repo ?? "repo";
@@ -40,8 +44,8 @@ export async function GET(req: Request) {
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <div style={{ fontSize: "28px", color: "#fbbf24", fontWeight: 700 }}>🔥 GitGrilled</div>
           </div>
-          <div style={{ fontSize: "52px", fontWeight: 800, color: "#ffffff" }}>
-            {owner}/{repo}
+          <div style={{ display: "flex", fontSize: "52px", fontWeight: 800, color: "#ffffff" }}>
+            {`${owner}/${repo}`}
           </div>
           <div style={{ fontSize: "30px", color, fontWeight: 700 }}>
             {verdictLabel(score)}

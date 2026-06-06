@@ -47,21 +47,34 @@ highlighted) + `message-content.tsx`, wired into the interview chat.
 
 ## Tier 2 — Product depth (makes it a real product, not a toy)
 
-### 4. Persistence + resume
-Everything is ephemeral today. Add a lightweight store (Neon Postgres / Vercel
-Blob) to save sessions, cache `ProjectProfile` per repo + commit SHA, and let
-users resume or review past interviews. Caching the profile alone makes "Try
-Again" instant and slashes AI cost.
+### 4. Persistence — profile cache + short share URLs ✅ *(first pass done)*
+Everything was ephemeral. First pass adds Upstash Redis (reusing the rate-limit
+integration, no new deps), all degrading gracefully when unconfigured:
+
+Shipped: `lib/kv.ts` (REST KV helpers + short-id), `ProjectProfile` cached per
+`owner/repo@treeSHA` in `/api/profile` (instant/free repeat visits & Try Again;
+`X-Cache` header), and short share links — `/api/scorecard` stores a card and
+returns a short id, `/scorecard?id=` + the OG route resolve it (`lib/load-scorecard.ts`),
+and the debrief Share button uses the short id with the long `?d=` token as
+fallback. Also fixed a latent OG-image crash (Satori "display: flex" on the
+`owner/repo` node) that would have broken every social preview in production.
+
+Not yet done (deferred from this pass): saving completed sessions / a history
+view, and full mid-interview resume.
 
 ### 5. Private repos via GitHub OAuth
 The single biggest limitation — people most want to be grilled on their own
 (often private) work. "Sign in with GitHub" + a repo picker is a major
 credibility unlock. Currently unauthenticated REST only.
 
-### 6. Difficulty / persona modes
-Let the user pick the interviewer: "FAANG staff engineer," "skeptical CTO,"
-"friendly senior." We already have a `difficulty` enum on probe areas — expose it
-as a user choice that reshapes the system prompt.
+### 6. Interviewer persona modes ✅ *(done)*
+Let the user pick the interviewer, reshaping the system prompt.
+
+Shipped: `lib/personas.ts` defines three personas — Senior Staff Engineer (cold,
+default), Skeptical CTO (tradeoffs/scale/cost/risk), Friendly Senior (supportive
+mentor). `buildInterviewerSystemPrompt` injects the persona's identity at the top
+and its tone into the interview rules. A persona picker sits on the pre-interview
+screen, threaded through session-client → InterviewChat → `/api/interview`.
 
 ---
 
