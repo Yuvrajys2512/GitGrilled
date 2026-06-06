@@ -67,11 +67,20 @@ as a user choice that reshapes the system prompt.
 
 ## Tier 3 — Robustness & credibility
 
-### 7. Use `streamObject` / `generateObject` for the profile
-`session-client.tsx` strips markdown fences by hand and `JSON.parse`es a streamed
-string — fragile, and one malformed token fails the whole session. The AI SDK's
-structured output with our existing Zod `projectProfileSchema` makes this reliable
-and lets us stream profile fields as they fill in.
+### 7. Use `generateObject` for the profile + debrief ✅ *(done)*
+`session-client.tsx` and the debrief handler stripped markdown fences by hand and
+`JSON.parse`ed a streamed string — fragile, and one malformed token failed the
+whole session.
+
+Shipped: `/api/profile` and `/api/debrief` now use the AI SDK's `generateObject`
+with the existing Zod schemas, returning guaranteed schema-valid JSON (with a
+one-retry guard against Groq's occasional strict-schema rejection). All
+hand-rolled fence-stripping/partial-parsing is gone from the client. Note: this
+required switching those two routes off `llama-3.3-70b` (no json_schema support)
+to `llama-4-scout` (30k TPM, env-overridable via `GROQ_PROFILE_MODEL` /
+`GROQ_DEBRIEF_MODEL`); the interview itself still uses llama-3.3-70b. Groq returns
+structured output complete rather than streaming, so the profile/debrief now pop
+in fully instead of filling field-by-field.
 
 ### 8. Finish Phase 6 — rate limiting + error boundaries ✅ *(done)*
 All API routes were open and each burns GitHub quota + Groq tokens.

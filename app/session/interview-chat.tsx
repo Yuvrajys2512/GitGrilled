@@ -170,36 +170,11 @@ export function InterviewChat({ profile, owner, repo, branch, fileTree }: Props)
         body: JSON.stringify({ profile, conversation: finalMessages }),
       });
 
-      if (!res.ok || !res.body) return;
+      if (!res.ok) return;
 
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let raw = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        raw += decoder.decode(value, { stream: true });
-        // Attempt partial parse of the streaming JSON object
-        try {
-          const parsed = debriefSchema.partial().safeParse(JSON.parse(raw));
-          if (parsed.success) setDebrief(parsed.data);
-        } catch {
-          // Not valid JSON yet — keep accumulating
-        }
-      }
-
-      // Final parse — strip markdown fences the model sometimes adds
-      try {
-        const cleaned = raw.trim()
-          .replace(/^```(?:json)?\s*\n?/, "")
-          .replace(/\n?```\s*$/, "")
-          .trim();
-        const final = debriefSchema.safeParse(JSON.parse(cleaned));
-        if (final.success) setDebrief(final.data);
-      } catch {
-        // Leave partial debrief visible
-      }
+      // The route returns a schema-validated Debrief as plain JSON.
+      const parsed = debriefSchema.safeParse(await res.json());
+      if (parsed.success) setDebrief(parsed.data);
     } finally {
       setDebriefStreaming(false);
     }

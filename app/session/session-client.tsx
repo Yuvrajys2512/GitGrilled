@@ -301,7 +301,7 @@ export function SessionClient({ owner, repo }: { owner: string; repo: string }) 
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(context),
         });
-        if (!res.ok || !res.body) {
+        if (!res.ok) {
           setAnalyzeError(
             res.status === 429
               ? { code: "RATE_LIMITED" }
@@ -310,20 +310,8 @@ export function SessionClient({ owner, repo }: { owner: string; repo: string }) 
           setPhase("error");
           return;
         }
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let raw = "";
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          raw += decoder.decode(value, { stream: true });
-        }
-        // Strip markdown code fences the model sometimes adds despite instructions
-        const cleaned = raw.trim()
-          .replace(/^```(?:json)?\s*\n?/, "")
-          .replace(/\n?```\s*$/, "")
-          .trim();
-        const parsed = projectProfileSchema.safeParse(JSON.parse(cleaned));
+        // The route returns a schema-validated ProjectProfile as plain JSON.
+        const parsed = projectProfileSchema.safeParse(await res.json());
         if (parsed.success) {
           setProfile(parsed.data);
           setPhase("ready");
