@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState, FormEvent } from "react";
+import { Mic, Volume2, VolumeX } from "lucide-react";
 import type { ProjectProfile } from "@/lib/profile";
 import type { Debrief } from "@/lib/debrief";
 import { debriefSchema } from "@/lib/debrief";
+import { useDictation, useSpeaker } from "@/lib/use-speech";
 import { DebriefView } from "./debrief-view";
+import { MessageContent } from "./message-content";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -44,10 +47,20 @@ export function InterviewChat({ profile, owner, repo, branch, fileTree }: Props)
   const [interviewDone, setInterviewDone] = useState(false);
   const [debrief, setDebrief] = useState<Partial<Debrief> | null>(null);
   const [debriefStreaming, setDebriefStreaming] = useState(false);
+  const [voiceMode, setVoiceMode] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const started = useRef(false);
   const debriefStarted = useRef(false);
+  const voiceModeRef = useRef(false);
+  voiceModeRef.current = voiceMode;
+
+  // Speech-to-text: dictate answers straight into the input.
+  const dictation = useDictation((chunk) => {
+    setInput((prev) => (prev ? prev.trimEnd() + " " : "") + chunk.trim());
+  });
+  // Text-to-speech: the interviewer reads each question aloud in voice mode.
+  const speaker = useSpeaker();
 
   // Auto-scroll
   useEffect(() => {
@@ -62,6 +75,10 @@ export function InterviewChat({ profile, owner, repo, branch, fileTree }: Props)
   }, [isStreaming, interviewDone, messages.length]);
 
   async function sendMessage(userContent: string) {
+    // Stop dictation and any in-flight speech the moment an answer is sent.
+    if (dictation.listening) dictation.stop();
+    speaker.cancel();
+
     const outgoing: ChatMessage[] = [
       ...messages,
       { role: "user", content: userContent },
@@ -114,6 +131,12 @@ export function InterviewChat({ profile, owner, repo, branch, fileTree }: Props)
           updated[updated.length - 1] = { role: "assistant", content: display };
           return updated;
         });
+      }
+
+      // In voice mode, read the interviewer's question aloud once it's complete.
+      if (voiceModeRef.current) {
+        const spoken = cleanContent(full);
+        if (spoken) speaker.speak(spoken);
       }
 
       if (full.includes("[INTERVIEW_COMPLETE]")) {
@@ -214,6 +237,18 @@ export function InterviewChat({ profile, owner, repo, branch, fileTree }: Props)
     }
   }
 
+  function toggleVoiceMode() {
+    setVoiceMode((on) => {
+      if (on) speaker.cancel(); // turning off — silence any current speech
+      return !on;
+    });
+  }
+
+  function toggleMic() {
+    if (dictation.listening) dictation.stop();
+    else dictation.start();
+  }
+
   const visibleMessages = messages.filter((m) => m.content !== "__BEGIN__");
   const userCount = messages.filter(
     (m) => m.role === "user" && m.content !== "__BEGIN__"
@@ -235,7 +270,23 @@ export function InterviewChat({ profile, owner, repo, branch, fileTree }: Props)
             <span>Exchange {userCount}</span>
           )}
         </span>
-        <span className="text-xs font-mono text-zinc-700">{owner}/{repo}</span>
+        <div className="flex items-center gap-3">
+          {speaker.supported && (
+            <button
+              onClick={toggleVoiceMode}
+              title={voiceMode ? "Voice mode on — click to mute" : "Read questions aloud"}
+              className={`flex items-center gap-1.5 text-xs font-mono px-2 py-1 rounded border transition-colors ${
+                voiceMode
+                  ? "text-amber-400 border-amber-800/60 bg-amber-950/30"
+                  : "text-zinc-600 border-zinc-800 hover:text-zinc-400 hover:border-zinc-700"
+              }`}
+            >
+              {voiceMode ? <Volume2 className="w-3 h-3" /> : <VolumeX className="w-3 h-3" />}
+              <span className="hidden sm:inline">{speaker.speaking ? "speaking…" : "voice"}</span>
+            </button>
+          )}
+          <span className="text-xs font-mono text-zinc-700">{owner}/{repo}</span>
+        </div>
       </div>
 
       {/* Messages */}
@@ -257,16 +308,20 @@ export function InterviewChat({ profile, owner, repo, branch, fileTree }: Props)
                 <span className={`text-[10px] font-mono uppercase tracking-widest ${isUser ? "text-zinc-600" : "text-amber-600/80"}`}>
                   {isUser ? "you" : "interviewer"}
                 </span>
-                <div className={`rounded-lg px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
+                <div className={`rounded-lg px-4 py-3 text-sm leading-relaxed ${
                   isUser
-                    ? "bg-zinc-800 text-zinc-100"
+                    ? "bg-zinc-800 text-zinc-100 whitespace-pre-wrap"
                     : "bg-zinc-900 border border-zinc-800 text-zinc-200"
                 }`}>
-                  {content || (
-                    i === visibleMessages.length - 1 && isStreaming
-                      ? <TypingDots />
-                      : null
-                  )}
+                  {content ? (
+                    isUser ? (
+                      content
+                    ) : (
+                      <MessageContent text={content} owner={owner} repo={repo} branch={branch} />
+                    )
+                  ) : i === visibleMessages.length - 1 && isStreaming ? (
+                    <TypingDots />
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -309,20 +364,44 @@ export function InterviewChat({ profile, owner, repo, branch, fileTree }: Props)
       {!interviewDone && (
         <div className="border-t border-zinc-900 pt-4 pb-2 shrink-0">
           <form onSubmit={handleSubmit} className="flex gap-3 items-end">
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={
-                isStreaming
-                  ? "Wait for the question..."
-                  : "Your answer — be specific, no hand-waving"
-              }
-              disabled={isStreaming}
-              rows={3}
-              className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-700 resize-none disabled:opacity-40 font-mono leading-relaxed"
-            />
+            <div className="flex-1 relative">
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={
+                  isStreaming
+                    ? "Wait for the question..."
+                    : dictation.listening
+                      ? "Listening — speak your answer…"
+                      : "Your answer — be specific, no hand-waving"
+                }
+                disabled={isStreaming}
+                rows={3}
+                className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 pr-12 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-700 resize-none disabled:opacity-40 font-mono leading-relaxed"
+              />
+              {dictation.supported && (
+                <button
+                  type="button"
+                  onClick={toggleMic}
+                  disabled={isStreaming}
+                  title={dictation.listening ? "Stop dictation" : "Dictate your answer"}
+                  className={`absolute top-2.5 right-2.5 p-1.5 rounded-md border transition-colors disabled:opacity-30 ${
+                    dictation.listening
+                      ? "text-red-400 border-red-800/60 bg-red-950/40 animate-pulse"
+                      : "text-zinc-500 border-zinc-800 hover:text-zinc-300 hover:border-zinc-700"
+                  }`}
+                >
+                  <Mic className="w-3.5 h-3.5" />
+                </button>
+              )}
+              {dictation.interim && (
+                <span className="absolute bottom-2 left-4 right-12 text-xs text-zinc-600 italic truncate font-mono pointer-events-none">
+                  {dictation.interim}
+                </span>
+              )}
+            </div>
             <button
               type="submit"
               disabled={isStreaming || !input.trim()}
@@ -331,7 +410,10 @@ export function InterviewChat({ profile, owner, repo, branch, fileTree }: Props)
               Send →
             </button>
           </form>
-          <p className="text-zinc-700 text-xs mt-2 font-mono">Enter to send · Shift+Enter for newline</p>
+          <p className="text-zinc-700 text-xs mt-2 font-mono">
+            Enter to send · Shift+Enter for newline
+            {dictation.supported && " · 🎙 to dictate"}
+          </p>
         </div>
       )}
 

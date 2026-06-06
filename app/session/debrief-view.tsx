@@ -1,7 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
+import { Share2, Check } from "lucide-react";
 import type { Debrief } from "@/lib/debrief";
+import { encodeScorecard, scorecardFromDebrief } from "@/lib/scorecard";
 
 function ScoreRing({ score }: { score: number }) {
   const color =
@@ -35,6 +38,33 @@ interface Props {
 }
 
 export function DebriefView({ debrief, isStreaming, owner, repo }: Props) {
+  const [shareState, setShareState] = useState<"idle" | "copied">("idle");
+
+  async function handleShare() {
+    const token = encodeScorecard(scorecardFromDebrief(owner, repo, debrief));
+    const url = `${window.location.origin}/scorecard?d=${token}`;
+    // Prefer the native share sheet on mobile; fall back to clipboard.
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `GitGrilled — ${owner}/${repo}`,
+          text: `I scored ${debrief.overallScore}/10 getting grilled on ${owner}/${repo}.`,
+          url,
+        });
+        return;
+      } catch {
+        // user dismissed the sheet — fall through to copy
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setShareState("copied");
+      setTimeout(() => setShareState("idle"), 2000);
+    } catch {
+      window.open(url, "_blank");
+    }
+  }
+
   return (
     <div className="flex flex-1 flex-col max-w-3xl mx-auto w-full py-8 gap-6">
 
@@ -161,6 +191,20 @@ export function DebriefView({ debrief, isStreaming, owner, repo }: Props) {
           >
             New Repo
           </Link>
+          <button
+            onClick={handleShare}
+            className="flex items-center gap-2 border border-amber-800/60 text-amber-400 px-4 py-2 rounded text-sm font-medium hover:border-amber-600 hover:bg-amber-950/30 transition-colors ml-auto"
+          >
+            {shareState === "copied" ? (
+              <>
+                <Check className="w-3.5 h-3.5" /> Link copied
+              </>
+            ) : (
+              <>
+                <Share2 className="w-3.5 h-3.5" /> Share scorecard
+              </>
+            )}
+          </button>
         </div>
       )}
 
