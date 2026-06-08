@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Share2, Check } from "lucide-react";
+import { Share2, Check, Flame } from "lucide-react";
 import type { Debrief } from "@/lib/debrief";
-import { encodeScorecard, scorecardFromDebrief } from "@/lib/scorecard";
+import { encodeScorecard, scorecardFromDebrief, fallbackRoast } from "@/lib/scorecard";
 
 function ScoreRing({ score }: { score: number }) {
   const color =
@@ -39,8 +39,9 @@ interface Props {
 
 export function DebriefView({ debrief, isStreaming, owner, repo }: Props) {
   const [shareState, setShareState] = useState<"idle" | "copied">("idle");
+  const [roastState, setRoastState] = useState<"idle" | "copied">("idle");
 
-  async function handleShare() {
+  async function handleShare(mode: "scorecard" | "roast") {
     const card = scorecardFromDebrief(owner, repo, debrief);
 
     // Prefer a short /scorecard?id= link (stored in Upstash). Fall back to the
@@ -62,12 +63,20 @@ export function DebriefView({ debrief, isStreaming, owner, repo }: Props) {
     if (!url) {
       url = `${window.location.origin}/scorecard?d=${encodeScorecard(card)}`;
     }
+    if (mode === "roast") url += "&m=roast";
+
+    const setCopied = mode === "roast" ? setRoastState : setShareState;
+    const shareText =
+      mode === "roast"
+        ? `🔥 ${card.roast || fallbackRoast(owner, repo, card.score)} (${debrief.overallScore}/10 on ${owner}/${repo})`
+        : `I scored ${debrief.overallScore}/10 getting grilled on ${owner}/${repo}.`;
+
     // Prefer the native share sheet on mobile; fall back to clipboard.
     if (navigator.share) {
       try {
         await navigator.share({
           title: `GitGrilled — ${owner}/${repo}`,
-          text: `I scored ${debrief.overallScore}/10 getting grilled on ${owner}/${repo}.`,
+          text: shareText,
           url,
         });
         return;
@@ -77,8 +86,8 @@ export function DebriefView({ debrief, isStreaming, owner, repo }: Props) {
     }
     try {
       await navigator.clipboard.writeText(url);
-      setShareState("copied");
-      setTimeout(() => setShareState("idle"), 2000);
+      setCopied("copied");
+      setTimeout(() => setCopied("idle"), 2000);
     } catch {
       window.open(url, "_blank");
     }
@@ -105,6 +114,15 @@ export function DebriefView({ debrief, isStreaming, owner, repo }: Props) {
             <span key={i} className="w-1 h-1 rounded-full bg-zinc-500 animate-bounce" style={{ animationDelay: `${i * 150}ms` }} />
           ))}
           <span>Generating debrief...</span>
+        </div>
+      )}
+
+      {/* Roast — the shareable burn */}
+      {debrief.roast && (
+        <div className="rounded-lg border border-amber-900/50 bg-gradient-to-br from-amber-950/30 to-red-950/20 p-4">
+          <p className="text-amber-100 text-base font-semibold leading-snug">
+            <Flame className="inline w-4 h-4 mb-0.5 text-amber-500" /> &ldquo;{debrief.roast}&rdquo;
+          </p>
         </div>
       )}
 
@@ -211,8 +229,8 @@ export function DebriefView({ debrief, isStreaming, owner, repo }: Props) {
             New Repo
           </Link>
           <button
-            onClick={handleShare}
-            className="flex items-center gap-2 border border-amber-800/60 text-amber-400 px-4 py-2 rounded text-sm font-medium hover:border-amber-600 hover:bg-amber-950/30 transition-colors ml-auto"
+            onClick={() => handleShare("scorecard")}
+            className="flex items-center gap-2 border border-zinc-700 text-zinc-300 px-4 py-2 rounded text-sm font-medium hover:border-zinc-500 transition-colors ml-auto"
           >
             {shareState === "copied" ? (
               <>
@@ -221,6 +239,20 @@ export function DebriefView({ debrief, isStreaming, owner, repo }: Props) {
             ) : (
               <>
                 <Share2 className="w-3.5 h-3.5" /> Share scorecard
+              </>
+            )}
+          </button>
+          <button
+            onClick={() => handleShare("roast")}
+            className="flex items-center gap-2 border border-amber-800/60 text-amber-400 px-4 py-2 rounded text-sm font-medium hover:border-amber-600 hover:bg-amber-950/30 transition-colors"
+          >
+            {roastState === "copied" ? (
+              <>
+                <Check className="w-3.5 h-3.5" /> Roast copied
+              </>
+            ) : (
+              <>
+                <Flame className="w-3.5 h-3.5" /> Share roast
               </>
             )}
           </button>

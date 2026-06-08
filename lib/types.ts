@@ -24,4 +24,5 @@ export type AnalyzeError =
   | { code: "REPO_NOT_FOUND" }
   | { code: "RATE_LIMITED" }
   | { code: "INVALID_REPO" }
+  | { code: "PROFILE_ERROR" }
   | { code: "FETCH_ERROR"; message: string };

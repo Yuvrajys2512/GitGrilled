@@ -7,6 +7,11 @@ import type { ProjectProfile } from "@/lib/profile";
 import type { PersonaId } from "@/lib/personas";
 import type { ModelMessage } from "ai";
 
+// The interviewer needs tool calling (listFiles/readFile/searchCode). Default is
+// llama-3.3-70b; override via env to spread load across daily token budgets or
+// use a different tool-capable model.
+const INTERVIEW_MODEL = process.env.GROQ_INTERVIEW_MODEL ?? "llama-3.3-70b-versatile";
+
 export async function POST(req: Request) {
   const limited = await enforce(req, "interview", 40);
   if (limited) return limited;
@@ -30,7 +35,7 @@ export async function POST(req: Request) {
   const { tools } = createRepoTools(owner, repo, branch);
 
   const result = streamText({
-    model: createGroq()("llama-3.3-70b-versatile"),
+    model: createGroq()(INTERVIEW_MODEL),
     system: buildInterviewerSystemPrompt(profile, fileTree, persona),
     messages,
     tools,

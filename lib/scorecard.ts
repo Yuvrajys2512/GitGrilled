@@ -7,10 +7,12 @@ export interface Scorecard {
   repo: string;
   score: number; // overall, 1-10
   verdict: string;
+  roast: string; // one savage, screenshot-ready one-liner
   categories: { name: string; score: number }[];
 }
 
 const MAX_VERDICT = 260;
+const MAX_ROAST = 180;
 const MAX_CATEGORIES = 6;
 
 export function scorecardFromDebrief(
@@ -23,6 +25,7 @@ export function scorecardFromDebrief(
     repo,
     score: debrief.overallScore ?? 0,
     verdict: (debrief.verdict ?? "").slice(0, MAX_VERDICT),
+    roast: (debrief.roast ?? "").slice(0, MAX_ROAST),
     categories: (debrief.categories ?? [])
       .slice(0, MAX_CATEGORIES)
       .map((c) => ({ name: c.category, score: c.score })),
@@ -35,11 +38,12 @@ interface Compact {
   r: string;
   s: number;
   v: string;
+  z?: string; // roast (optional — older links won't have it)
   c: [string, number][];
 }
 
 function toCompact(s: Scorecard): Compact {
-  return { o: s.owner, r: s.repo, s: s.score, v: s.verdict, c: s.categories.map((c) => [c.name, c.score]) };
+  return { o: s.owner, r: s.repo, s: s.score, v: s.verdict, z: s.roast, c: s.categories.map((c) => [c.name, c.score]) };
 }
 
 function fromCompact(c: Compact): Scorecard {
@@ -48,6 +52,7 @@ function fromCompact(c: Compact): Scorecard {
     repo: String(c.r ?? ""),
     score: Number(c.s ?? 0),
     verdict: String(c.v ?? ""),
+    roast: String(c.z ?? ""),
     categories: Array.isArray(c.c)
       ? c.c.map(([name, score]) => ({ name: String(name), score: Number(score) }))
       : [],
@@ -83,4 +88,20 @@ export function verdictLabel(score: number): string {
   if (score >= 5) return "Scraped through";
   if (score >= 3) return "Got grilled";
   return "Got torched";
+}
+
+// A short, punchy "grade stamp" for the roast card — funnier than the score alone.
+export function roastStamp(score: number): string {
+  if (score >= 9) return "CHEF'S KISS";
+  if (score >= 7) return "WELL DONE";
+  if (score >= 5) return "MEDIUM RARE";
+  if (score >= 3) return "BURNT";
+  return "INCINERATED";
+}
+
+// Used when a card has no AI-written roast (older share links / generation gap).
+export function fallbackRoast(owner: string, repo: string, score: number): string {
+  if (score >= 7) return `Knows ${repo} well enough to survive. Annoying.`;
+  if (score >= 5) return `Wrote ${repo}, can barely explain it. Classic.`;
+  return `Built ${repo} and folded the second anyone asked why.`;
 }

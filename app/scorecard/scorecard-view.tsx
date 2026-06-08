@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { Scorecard } from "@/lib/scorecard";
-import { verdictLabel } from "@/lib/scorecard";
+import { verdictLabel, roastStamp, fallbackRoast } from "@/lib/scorecard";
 
 function scoreText(score: number): string {
   return score >= 7 ? "text-green-400" : score >= 5 ? "text-yellow-400" : "text-red-400";
@@ -11,7 +11,7 @@ function scoreBar(score: number): string {
   return score >= 7 ? "bg-green-500" : score >= 5 ? "bg-yellow-500" : "bg-red-500";
 }
 
-export function ScorecardView({ card }: { card: Scorecard | null }) {
+export function ScorecardView({ card, roastMode }: { card: Scorecard | null; roastMode?: boolean }) {
   if (!card || !card.owner) {
     return (
       <main className="flex flex-col items-center justify-center min-h-screen px-4 bg-zinc-950">
@@ -25,6 +25,8 @@ export function ScorecardView({ card }: { card: Scorecard | null }) {
     );
   }
 
+  const roastLine = card.roast || fallbackRoast(card.owner, card.repo, card.score);
+
   return (
     <main className="flex flex-col items-center min-h-screen px-4 bg-zinc-950 py-12">
       <div className="w-full max-w-2xl space-y-8">
@@ -34,8 +36,34 @@ export function ScorecardView({ card }: { card: Scorecard | null }) {
           <Link href="/" className="font-mono text-sm text-amber-500 hover:text-amber-400 transition-colors">
             🔥 GitGrilled
           </Link>
-          <span className="font-mono text-xs text-zinc-600">interview scorecard</span>
+          <span className="font-mono text-xs text-zinc-600">
+            {roastMode ? "roast card" : "interview scorecard"}
+          </span>
         </div>
+
+        {/* Roast — the hero in roast mode, a callout otherwise */}
+        {roastMode ? (
+          <div className="rounded-xl border border-amber-900/50 bg-gradient-to-br from-amber-950/30 to-red-950/20 p-6 sm:p-8 space-y-4">
+            <p className="text-zinc-600 text-xs font-mono uppercase tracking-widest">{card.owner}/{card.repo}</p>
+            <p className="text-2xl sm:text-3xl font-bold text-white leading-snug">
+              <span className="text-amber-700/70">“</span>{roastLine}<span className="text-amber-700/70">”</span>
+            </p>
+            <div className="flex items-center gap-3 pt-1">
+              <span className={`font-mono text-[11px] font-bold tracking-widest px-2.5 py-1 rounded border border-current ${scoreText(card.score)}`}>
+                {roastStamp(card.score)}
+              </span>
+              <span className={`font-mono font-bold ${scoreText(card.score)}`}>
+                {card.score}<span className="text-zinc-600">/10</span>
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-amber-900/40 bg-amber-950/20 px-4 py-3">
+            <p className="text-amber-200/90 text-sm font-medium leading-relaxed">
+              🔥 “{roastLine}”
+            </p>
+          </div>
+        )}
 
         {/* Hero */}
         <div className="flex items-end justify-between gap-4 border-b border-zinc-900 pb-8">

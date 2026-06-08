@@ -10,6 +10,11 @@ export const categoryScoreSchema = z.object({
 export const debriefSchema = z.object({
   overallScore: z.number().min(1).max(10),
   verdict: z.string().describe("Blunt 2-3 sentence honest summary of performance"),
+  roast: z
+    .string()
+    .describe(
+      "ONE savage, funny, screenshot-worthy one-liner roasting the candidate's performance. Tweet-sized (under 140 chars), punchy, no preamble, no hedging. Think comedy-roast burn, not a clinical note. It should make people laugh and want to share it."
+    ),
   categories: z.array(categoryScoreSchema).describe("Score each probe area that was covered"),
   strongAreas: z.array(z.string()).describe("Things they genuinely understood well"),
   weakAreas: z.array(z.string()).describe("Things they were vague, wrong, or avoided"),
@@ -32,7 +37,8 @@ Rules:
 - Be specific: reference actual answers they gave, not generic impressions
 - fumbledQuestions should quote or closely paraphrase what the candidate actually said
 - Don't inflate scores because they were "trying" — evaluate what they demonstrated
-- If they dodged a question, noted it as a weak area`;
+- If they dodged a question, noted it as a weak area
+- The "roast" is a single brutal, funny one-liner for a shareable card — make it land. Roast the candidate's actual performance (vagueness, dodges, hand-waving), never anything personal. The harsher the score, the harsher the burn; a strong performance gets a cocky, begrudging-respect burn instead`;
 
 interface ConversationTurn {
   role: "user" | "assistant";

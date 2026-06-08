@@ -83,8 +83,9 @@ function ProfilingView({ owner, repo }: { owner: string; repo: string }) {
 function ErrorView({ error, owner, repo }: { error: AnalyzeError; owner: string; repo: string }) {
   const msgs: Record<string, string> = {
     REPO_NOT_FOUND: `Couldn't find ${owner}/${repo}. Make sure it's a public repo.`,
-    RATE_LIMITED: "GitHub API rate limit hit. Try again in a few minutes.",
+    RATE_LIMITED: "Rate limit hit. Try again in a few minutes.",
     INVALID_REPO: "Invalid repository format.",
+    PROFILE_ERROR: "The AI couldn't analyze this repo (it may be too large). Try again, or try a different repo.",
     FETCH_ERROR: "Something went wrong fetching the repo.",
   };
   return (
@@ -338,9 +339,7 @@ export function SessionClient({ owner, repo }: { owner: string; repo: string }) 
         });
         if (!res.ok) {
           setAnalyzeError(
-            res.status === 429
-              ? { code: "RATE_LIMITED" }
-              : { code: "FETCH_ERROR", message: "Profile generation failed" }
+            res.status === 429 ? { code: "RATE_LIMITED" } : { code: "PROFILE_ERROR" }
           );
           setPhase("error");
           return;
@@ -355,7 +354,7 @@ export function SessionClient({ owner, repo }: { owner: string; repo: string }) 
           setPhase("error");
         }
       } catch {
-        setAnalyzeError({ code: "FETCH_ERROR", message: "Profile generation failed" });
+        setAnalyzeError({ code: "PROFILE_ERROR" });
         setPhase("error");
       }
     })();

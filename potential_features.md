@@ -19,9 +19,18 @@ shows the candidate's camera with graceful permission handling; a "video" toggle
 in `interview-chat.tsx` swaps in the video-call layout with a live caption of the
 current question. Free, real-time, zero new API keys.
 
+### Roast-mode share card 🔥 ✅ *(done)*
+The debrief now generates a single brutal, tweet-sized one-liner (`roast` field
+on the debrief schema). A "🔥 Share roast" button builds a `/scorecard?...&m=roast`
+link whose dynamic OG image is a meme-style burn card — huge centered quote, a
+rotated grade stamp (CHEF'S KISS → INCINERATED), and the score in scorecard
+colors. The scorecard page leads with the roast in roast mode, and falls back to
+a score-based burn for older links. Pure viral fuel, reusing the existing
+scorecard/OG pipeline.
+
 Future wow ideas (not built): live coding challenge that runs your code in a
 Vercel Sandbox; "it planted a bug in your own code"; panel interview (all
-personas at once); live BS/confidence meter; roast-mode share card.
+personas at once); live BS/confidence meter.
 
 ## Tier 1 — "Wow in the first 30 seconds" (demo wins)
 

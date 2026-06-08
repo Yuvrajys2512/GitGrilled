@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { verdictLabel } from "@/lib/scorecard";
+import { verdictLabel, fallbackRoast } from "@/lib/scorecard";
 import { loadScorecard } from "@/lib/load-scorecard";
 import { ScorecardView } from "./scorecard-view";
 
@@ -10,11 +10,13 @@ function siteUrl(): string {
   return "http://localhost:3000";
 }
 
-type SearchParams = Promise<{ d?: string; id?: string }>;
+type SearchParams = Promise<{ d?: string; id?: string; m?: string }>;
 
-function ogImageUrl(id?: string, d?: string): string {
-  if (id) return `${siteUrl()}/api/og?id=${encodeURIComponent(id)}`;
-  return `${siteUrl()}/api/og?d=${encodeURIComponent(d ?? "")}`;
+function ogImageUrl(id?: string, d?: string, roast?: boolean): string {
+  const base = id
+    ? `${siteUrl()}/api/og?id=${encodeURIComponent(id)}`
+    : `${siteUrl()}/api/og?d=${encodeURIComponent(d ?? "")}`;
+  return roast ? `${base}&m=roast` : base;
 }
 
 export async function generateMetadata({
@@ -22,13 +24,19 @@ export async function generateMetadata({
 }: {
   searchParams: SearchParams;
 }): Promise<Metadata> {
-  const { d, id } = await searchParams;
+  const { d, id, m } = await searchParams;
   const card = await loadScorecard({ id, d });
   if (!card) return { title: "GitGrilled — Scorecard" };
 
-  const title = `${card.owner}/${card.repo} — ${verdictLabel(card.score)} (${card.score}/10)`;
-  const description = card.verdict || "Got grilled on my own code by GitGrilled.";
-  const ogImage = ogImageUrl(id, d);
+  const roastMode = m === "roast";
+  const roastLine = card.roast || fallbackRoast(card.owner, card.repo, card.score);
+  const title = roastMode
+    ? `${card.owner}/${card.repo} got roasted (${card.score}/10)`
+    : `${card.owner}/${card.repo} — ${verdictLabel(card.score)} (${card.score}/10)`;
+  const description = roastMode
+    ? roastLine
+    : card.verdict || "Got grilled on my own code by GitGrilled.";
+  const ogImage = ogImageUrl(id, d, roastMode);
 
   return {
     title,
@@ -52,7 +60,7 @@ export default async function ScorecardPage({
 }: {
   searchParams: SearchParams;
 }) {
-  const { d, id } = await searchParams;
+  const { d, id, m } = await searchParams;
   const card = await loadScorecard({ id, d });
-  return <ScorecardView card={card} />;
+  return <ScorecardView card={card} roastMode={m === "roast"} />;
 }

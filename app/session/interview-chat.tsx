@@ -88,6 +88,14 @@ export function InterviewChat({ profile, owner, repo, branch, fileTree, persona 
     }
   }, [isStreaming, interviewDone, messages.length]);
 
+  function setLastAssistant(content: string) {
+    setMessages((prev) => {
+      const updated = [...prev];
+      updated[updated.length - 1] = { role: "assistant", content };
+      return updated;
+    });
+  }
+
   async function sendMessage(userContent: string) {
     // Stop dictation and any in-flight speech the moment an answer is sent.
     if (dictation.listening) dictation.stop();
@@ -100,16 +108,24 @@ export function InterviewChat({ profile, owner, repo, branch, fileTree, persona 
     setMessages(outgoing);
     setInput("");
     setIsStreaming(true);
-
     // Seed assistant message
     setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
 
+    try {
+      // Groq occasionally returns an empty stream for a tool turn ("Failed to
+      // call a function"). It's intermittent, so retry once before giving up.
+      await streamAssistant(outgoing, 0);
+    } finally {
+      setIsStreaming(false);
+    }
+  }
+
+  async function streamAssistant(outgoing: ChatMessage[], attempt: number) {
     try {
       const res = await fetch("/api/interview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          // Only send role + content — ModelMessage shape
           messages: outgoing.map((m) => ({ role: m.role, content: m.content })),
           profile,
           owner,
@@ -121,32 +137,34 @@ export function InterviewChat({ profile, owner, repo, branch, fileTree, persona 
       });
 
       if (!res.ok || !res.body) {
-        const msg =
+        setLastAssistant(
           res.status === 429
             ? "You're going too fast — wait a moment before sending again."
-            : "Something went wrong. Try again.";
-        setMessages((prev) => {
-          const updated = [...prev];
-          updated[updated.length - 1] = { role: "assistant", content: msg };
-          return updated;
-        });
+            : "Something went wrong. Try again."
+        );
         return;
       }
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let full = "";
-
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         full += decoder.decode(value, { stream: true });
-        const display = full;
-        setMessages((prev) => {
-          const updated = [...prev];
-          updated[updated.length - 1] = { role: "assistant", content: display };
-          return updated;
-        });
+        setLastAssistant(full);
+      }
+
+      // Empty stream → intermittent upstream hiccup. Retry once silently.
+      if (!full.trim()) {
+        if (attempt < 1) {
+          await new Promise((r) => setTimeout(r, 500));
+          return streamAssistant(outgoing, attempt + 1);
+        }
+        setLastAssistant(
+          "⚠️ The interviewer didn't respond. This can happen if the Groq daily token limit is hit — try again in a moment."
+        );
+        return;
       }
 
       // In voice or video mode, read the interviewer's question aloud once done.
@@ -159,16 +177,11 @@ export function InterviewChat({ profile, owner, repo, branch, fileTree, persona 
         setInterviewDone(true);
       }
     } catch {
-      setMessages((prev) => {
-        const updated = [...prev];
-        updated[updated.length - 1] = {
-          role: "assistant",
-          content: "Network error. Check your connection.",
-        };
-        return updated;
-      });
-    } finally {
-      setIsStreaming(false);
+      if (attempt < 1) {
+        await new Promise((r) => setTimeout(r, 500));
+        return streamAssistant(outgoing, attempt + 1);
+      }
+      setLastAssistant("Network error. Check your connection.");
     }
   }
 

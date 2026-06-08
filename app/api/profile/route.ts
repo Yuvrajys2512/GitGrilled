@@ -11,10 +11,14 @@ import { kvGetJSON, kvSetJSON } from "@/lib/kv";
 import type { RepoContext } from "@/lib/types";
 import type { ProjectProfile } from "@/lib/profile";
 
-// Structured output needs a Groq model that supports json_schema. llama-3.3-70b
-// does not; llama-4-scout does and has a high TPM ceiling for large repo prompts.
-const PROFILE_MODEL =
-  process.env.GROQ_PROFILE_MODEL ?? "meta-llama/llama-4-scout-17b-16e-instruct";
+// Structured output needs a Groq model that supports json_schema (llama-3.3-70b
+// does not). Primary is llama-4-scout (high TPM, handles large prompts); if it
+// produces invalid output we fall back to gpt-oss-120b (stronger, lower TPM —
+// fine now that the profiler prompt is trimmed). Override the primary via env.
+const PROFILE_MODELS = [
+  process.env.GROQ_PROFILE_MODEL ?? "meta-llama/llama-4-scout-17b-16e-instruct",
+  "openai/gpt-oss-120b",
+];
 
 const PROFILE_TTL = 60 * 60 * 24 * 7; // 7 days
 
@@ -45,21 +49,25 @@ export async function POST(req: NextRequest) {
   }
 
   // generateObject guarantees a schema-valid ProjectProfile or throws — no
-  // markdown-fence stripping or hand-rolled JSON parsing on the client. Groq's
-  // strict json_schema occasionally rejects a bad generation, so retry once.
+  // markdown-fence stripping or hand-rolled JSON parsing on the client. Try each
+  // model twice (Groq's strict json_schema can reject a bad generation), then
+  // fall back to the next model.
   const groq = createGroq();
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const { object } = await generateObject({
-        model: groq(PROFILE_MODEL),
-        schema: projectProfileSchema,
-        system: ANALYSIS_SYSTEM_PROMPT,
-        prompt: buildAnalysisPrompt(context),
-      });
-      if (cacheKey) await kvSetJSON(cacheKey, object, PROFILE_TTL);
-      return Response.json(object, { headers: { "X-Cache": "MISS" } });
-    } catch (err) {
-      console.error(`[profile] attempt ${attempt + 1}`, err instanceof Error ? err.message : err);
+  const prompt = buildAnalysisPrompt(context);
+  for (const model of PROFILE_MODELS) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const { object } = await generateObject({
+          model: groq(model),
+          schema: projectProfileSchema,
+          system: ANALYSIS_SYSTEM_PROMPT,
+          prompt,
+        });
+        if (cacheKey) await kvSetJSON(cacheKey, object, PROFILE_TTL);
+        return Response.json(object, { headers: { "X-Cache": "MISS" } });
+      } catch (err) {
+        console.error(`[profile] ${model} attempt ${attempt + 1}`, err instanceof Error ? err.message : err);
+      }
     }
   }
   return Response.json({ error: "Profile generation failed" }, { status: 502 });

@@ -53,6 +53,16 @@ Rules:
 
 The candidate wrote this code. They should be able to defend every line. Your profile prepares the interviewer to make sure they can.`;
 
+// Budgets kept deliberately tight: the profiler only needs enough to identify
+// the stack, architecture, and probe areas — the interviewer reads the full repo
+// live via tools. A smaller prompt also keeps structured-output models reliable
+// and well under Groq's per-minute token limits.
+const PROFILE_README_CHARS = 2800;
+const PROFILE_MANIFEST_CHARS = 1400;
+const PROFILE_TREE_LINES = 50;
+const PROFILE_MAX_FILES = 10;
+const PROFILE_FILE_CHARS = 2000;
+
 function contextToText(ctx: RepoContext): string {
   const lines: string[] = [
     `REPO: ${ctx.owner}/${ctx.repo}`,
@@ -65,25 +75,27 @@ function contextToText(ctx: RepoContext): string {
 
   if (ctx.readme) {
     lines.push("=== README ===");
-    lines.push(ctx.readme.slice(0, 3500));
-    if (ctx.readme.length > 3500) lines.push("... [truncated]");
+    lines.push(ctx.readme.slice(0, PROFILE_README_CHARS));
+    if (ctx.readme.length > PROFILE_README_CHARS) lines.push("... [truncated]");
     lines.push("");
   }
 
   if (ctx.manifest) {
     lines.push(`=== ${ctx.manifest.path} ===`);
-    lines.push(ctx.manifest.content.slice(0, 2000));
+    lines.push(ctx.manifest.content.slice(0, PROFILE_MANIFEST_CHARS));
     lines.push("");
   }
 
   lines.push("=== FILE TREE ===");
-  lines.push(ctx.fileTree.split("\n").slice(0, 80).join("\n"));
+  lines.push(ctx.fileTree.split("\n").slice(0, PROFILE_TREE_LINES).join("\n"));
   lines.push("");
 
-  lines.push("=== SOURCE FILES ===");
-  for (const file of ctx.files.slice(0, 20)) {
+  lines.push("=== KEY SOURCE FILES (excerpts) ===");
+  for (const file of ctx.files.slice(0, PROFILE_MAX_FILES)) {
     lines.push(`--- ${file.path} ---`);
-    lines.push(file.content);
+    const body = file.content.slice(0, PROFILE_FILE_CHARS);
+    lines.push(body);
+    if (file.content.length > PROFILE_FILE_CHARS) lines.push("... [truncated]");
     lines.push("");
   }
 
