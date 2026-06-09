@@ -1,6 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+
+// Subscribe helper for client-only flags: the value never changes after mount,
+// so we never need to notify React of an update.
+const noopSubscribe = () => () => {};
 
 // ─── Minimal Web Speech API typings ──────────────────────────────────
 // These aren't in the standard TS DOM lib, so we declare just what we use.
@@ -46,7 +50,9 @@ export function useDictation(onFinalChunk: (text: string) => void) {
   const supported = typeof window !== "undefined" && getRecognitionCtor() !== null;
   // Keep the latest callback without re-creating the recognition instance.
   const cbRef = useRef(onFinalChunk);
-  cbRef.current = onFinalChunk;
+  useEffect(() => {
+    cbRef.current = onFinalChunk;
+  }, [onFinalChunk]);
 
   const stop = useCallback(() => {
     recognitionRef.current?.stop();
@@ -111,8 +117,10 @@ function pickInterviewerVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVo
 
 export function useSpeaker() {
   // Always "supported" on the client: we use the server TTS route and fall back
-  // to the browser's speechSynthesis if it's unavailable or fails.
-  const [supported, setSupported] = useState(false);
+  // to the browser's speechSynthesis if it's unavailable or fails. Read it via
+  // useSyncExternalStore so SSR renders false and the client renders true
+  // without a hydration mismatch or a setState-in-effect.
+  const supported = useSyncExternalStore(noopSubscribe, () => true, () => false);
   const [speaking, setSpeaking] = useState(false);
   const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -152,7 +160,6 @@ export function useSpeaker() {
   const getAnalyser = useCallback(() => analyserRef.current, []);
 
   useEffect(() => {
-    setSupported(true);
     if (!hasSynth) return;
     const load = () => {
       voiceRef.current = pickInterviewerVoice(window.speechSynthesis.getVoices());

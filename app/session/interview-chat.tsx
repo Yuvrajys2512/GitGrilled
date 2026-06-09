@@ -65,9 +65,11 @@ export function InterviewChat({ profile, owner, repo, branch, fileTree, persona 
   const started = useRef(false);
   const debriefStarted = useRef(false);
   const voiceModeRef = useRef(false);
-  voiceModeRef.current = voiceMode;
   const videoModeRef = useRef(false);
-  videoModeRef.current = videoMode;
+  useEffect(() => {
+    voiceModeRef.current = voiceMode;
+    videoModeRef.current = videoMode;
+  }, [voiceMode, videoMode]);
 
   // Speech-to-text: dictate answers straight into the input.
   const dictation = useDictation((chunk) => {

@@ -25,7 +25,9 @@ export function Avatar({ getAnalyser, speaking, thinking, personaId }: Props) {
   const mouthRef = useRef<SVGEllipseElement>(null);
   const glowRef = useRef<HTMLDivElement>(null);
   const speakingRef = useRef(speaking);
-  speakingRef.current = speaking;
+  useEffect(() => {
+    speakingRef.current = speaking;
+  }, [speaking]);
   const [blink, setBlink] = useState(false);
 
   // Lip-sync loop: sample audio amplitude (or synthesize when no analyser).
