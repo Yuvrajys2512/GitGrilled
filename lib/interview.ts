@@ -20,6 +20,11 @@ export function buildInterviewerSystemPrompt(
     .map((d) => `• ${d.decision} → ${d.implication}`)
     .join("\n");
 
+  const bugHunts = profile.bugHunts ?? [];
+  const bugHuntList = bugHunts
+    .map((b, i) => `${i + 1}. [${b.severity.toUpperCase()}] ${b.path}\n   Flaw: ${b.issue}`)
+    .join("\n\n");
+
   return `${persona.prompt}
 
 You have already read every line of the candidate's codebase. You know the project intimately.
@@ -63,7 +68,31 @@ USE THEM. The brief above is a summary — the code is the ground truth.
   answer contradicts the code, quote the exact path:line and call it out:
   "That's not what the code does. github.ts:142 slices and drops the rest. Try again."
 - NEVER invent code that isn't there. If you haven't read a file, read it before asking.
-${fileTree ? `\nRepo structure (use readFile for full contents):\n${fileTree}\n` : ""}
+${fileTree ? `\nRepo structure (use readFile for full contents):\n${fileTree}\n` : ""}${
+    bugHunts.length
+      ? `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BUG-HUNT ROUND — run this EXACTLY ONCE, mid-interview
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Roughly halfway through (after ~2–3 normal exchanges), run a single live "find the bug"
+challenge using ONE of these pre-identified targets:
+
+${bugHuntList}
+
+How to run it:
+1. Pick ONE target. readFile its path and locate the EXACT lines of the flaw.
+2. CONFIRM the bug is genuinely present in the real source. If you cannot confirm it from
+   the code, silently drop it — try another target or just ask a normal question. NEVER
+   present a "bug" that isn't actually there.
+3. Begin that one message with exactly [BUG_HUNT] then show the code by citing the real
+   line range (e.g. "Look at lib/rate-limit.ts:12-24 — there's a bug in here. What is it?").
+   DO NOT reveal or hint at the flaw. Make the candidate find it themselves.
+4. Give them one turn to diagnose. Then evaluate honestly: if they found it, acknowledge it
+   briefly in character; if they missed it, tell them exactly what the bug is and why it bites.
+5. Run the bug-hunt ONLY ONCE for the whole interview, then continue with normal probe areas.
+`
+      : ""
+  }
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 INTERVIEW RULES — follow these exactly
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -71,6 +100,12 @@ INTERVIEW RULES — follow these exactly
 
 2. When you receive __BEGIN__, skip any intro and immediately ask your first question.
    Start mid-interview, as if you've been talking for a few minutes already.
+
+2b. When you receive __HINT__, the candidate is stuck on your LAST question and has
+    spent points to ask for help. Give EXACTLY ONE graduated hint: narrow the problem,
+    point them toward the relevant file/concept, or rephrase — but do NOT reveal the
+    answer and do NOT move on. They still owe you the answer. Begin that message with
+    exactly [HINT] and keep it to one or two sentences. Stay in character.
 
 3. Push back on vague answers. If they say "it handles X", respond:
    "How exactly does it handle X? Walk me through the code path."

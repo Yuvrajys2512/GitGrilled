@@ -8,6 +8,18 @@ export const probeAreaSchema = z.object({
   sampleQuestion: z.string().describe("A real interview question the interviewer might ask"),
 });
 
+export const bugHuntSchema = z.object({
+  path: z.string().describe("The file that contains the flaw, e.g. lib/rate-limit.ts"),
+  issue: z
+    .string()
+    .describe(
+      "A GENUINE latent bug, race condition, missing guard/await, off-by-one, unbounded input, or unhandled error path that is actually present in this file. Must be specific and defensible from the real source — describe exactly what goes wrong and when."
+    ),
+  severity: z
+    .enum(["subtle", "moderate", "nasty"])
+    .describe("subtle = easy to miss, moderate = a careful dev catches it, nasty = will bite in production"),
+});
+
 export const projectProfileSchema = z.object({
   stack: z.object({
     language: z.string(),
@@ -33,6 +45,11 @@ export const projectProfileSchema = z.object({
     })
   ).describe("3-5 specific technical decisions made in this codebase"),
   weakSpots: z.array(z.string()).describe("Honest gaps, naive implementations, missing edge cases"),
+  bugHunts: z
+    .array(bugHuntSchema)
+    .describe(
+      "1-3 GENUINE latent bugs or sharp edge-cases that actually exist in the code — real flaws the author should be able to find and explain when shown the file. Used for a live 'find the bug' challenge. Do NOT invent bugs: if you are not confident a flaw is really there, leave the array shorter or empty."
+    ),
   probeAreas: z.array(probeAreaSchema).describe("5-8 areas to grill the candidate on — must be specific to this repo"),
   summary: z.string().describe("Honest 2-3 sentence assessment of the project and developer skill level"),
 });
@@ -49,6 +66,7 @@ Rules:
 - Identify naive implementations, missing error handling, questionable design choices, and knowledge gaps
 - Probe areas must reference actual files, patterns, or decisions visible in the code — no generic questions
 - weakSpots should be blunt: if something is half-finished, over-engineered, or wrong, say so
+- bugHunts must be REAL flaws visible in the actual source you were given (race conditions, missing await/guards, off-by-one, unbounded input, swallowed errors). Quote-able from the code. If you can't point to a genuine one, return fewer or none — never fabricate a bug.
 - Difficulty "brutal" means a question that would make most mid-level engineers sweat
 
 The candidate wrote this code. They should be able to defend every line. Your profile prepares the interviewer to make sure they can.`;

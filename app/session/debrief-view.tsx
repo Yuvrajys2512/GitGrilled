@@ -1,31 +1,86 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Share2, Check, Flame } from "lucide-react";
 import type { Debrief } from "@/lib/debrief";
 import { encodeScorecard, scorecardFromDebrief, fallbackRoast } from "@/lib/scorecard";
 
-function ScoreRing({ score }: { score: number }) {
-  const color =
-    score >= 7 ? "text-green-400" : score >= 5 ? "text-yellow-400" : "text-red-400";
+// Ease a number from 0 → target over `duration` ms using requestAnimationFrame.
+// (setState lives in the rAF callback, not the effect body, so it's lint-clean.)
+function useCountUp(target: number, duration = 900) {
+  const [val, setVal] = useState(0);
+  useEffect(() => {
+    let raf = 0;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - t, 3); // easeOutCubic
+      setVal(target * eased);
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, duration]);
+  return val;
+}
+
+// Fades + slides its children in on mount, after an optional delay. Used to
+// stagger the debrief sections so they appear to "fill in" one after another.
+function Reveal({ delay = 0, children }: { delay?: number; children: React.ReactNode }) {
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setShown(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
   return (
-    <div className={`text-5xl font-bold font-mono ${color}`}>
-      {score}<span className="text-zinc-600 text-2xl">/10</span>
+    <div
+      style={{ transitionDelay: `${delay}ms` }}
+      className={`transition-all duration-500 ease-out ${
+        shown ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
+      }`}
+    >
+      {children}
+    </div>
+  );
+}
+
+// Literal class strings (no interpolation) so Tailwind doesn't purge them.
+function scoreColor(score: number, kind: "text" | "bg") {
+  if (score >= 7) return kind === "text" ? "text-green-400" : "bg-green-500";
+  if (score >= 5) return kind === "text" ? "text-yellow-400" : "bg-yellow-500";
+  return kind === "text" ? "text-red-400" : "bg-red-500";
+}
+
+function ScoreRing({ score }: { score: number }) {
+  const animated = useCountUp(score);
+  return (
+    <div className={`text-5xl font-bold font-mono tabular-nums ${scoreColor(score, "text")}`}>
+      {animated.toFixed(1)}<span className="text-zinc-600 text-2xl">/10</span>
     </div>
   );
 }
 
 function ScoreBar({ score }: { score: number }) {
   const pct = (score / 10) * 100;
-  const color =
-    score >= 7 ? "bg-green-500" : score >= 5 ? "bg-yellow-500" : "bg-red-500";
+  // Width animates from 0 → pct once mounted (flag flips inside rAF).
+  const [grown, setGrown] = useState(false);
+  const animated = useCountUp(score, 900);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setGrown(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
   return (
     <div className="flex items-center gap-3">
       <div className="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
+        <div
+          className={`h-full rounded-full transition-[width] duration-[900ms] ease-out ${scoreColor(score, "bg")}`}
+          style={{ width: grown ? `${pct}%` : "0%" }}
+        />
       </div>
-      <span className="text-xs font-mono text-zinc-400 w-4 text-right">{score}</span>
+      <span className="text-xs font-mono text-zinc-400 w-6 text-right tabular-nums">
+        {animated.toFixed(1)}
+      </span>
     </div>
   );
 }
@@ -119,18 +174,22 @@ export function DebriefView({ debrief, isStreaming, owner, repo }: Props) {
 
       {/* Roast — the shareable burn */}
       {debrief.roast && (
-        <div className="rounded-lg border border-amber-900/50 bg-gradient-to-br from-amber-950/30 to-red-950/20 p-4">
-          <p className="text-amber-100 text-base font-semibold leading-snug">
-            <Flame className="inline w-4 h-4 mb-0.5 text-amber-500" /> &ldquo;{debrief.roast}&rdquo;
-          </p>
-        </div>
+        <Reveal>
+          <div className="rounded-lg border border-amber-900/50 bg-gradient-to-br from-amber-950/30 to-red-950/20 p-4">
+            <p className="text-amber-100 text-base font-semibold leading-snug">
+              <Flame className="inline w-4 h-4 mb-0.5 text-amber-500" /> &ldquo;{debrief.roast}&rdquo;
+            </p>
+          </div>
+        </Reveal>
       )}
 
       {/* Verdict */}
       {debrief.verdict && (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
-          <p className="text-zinc-300 text-sm leading-relaxed">{debrief.verdict}</p>
-        </div>
+        <Reveal delay={120}>
+          <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
+            <p className="text-zinc-300 text-sm leading-relaxed">{debrief.verdict}</p>
+          </div>
+        </Reveal>
       )}
 
       {/* Category scores */}
@@ -139,13 +198,15 @@ export function DebriefView({ debrief, isStreaming, owner, repo }: Props) {
           <h3 className="text-zinc-500 text-xs font-mono uppercase tracking-widest">By category</h3>
           <div className="space-y-3">
             {debrief.categories.map((cat, i) => (
-              <div key={i} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-zinc-200 text-sm font-medium">{cat.category}</span>
+              <Reveal key={i} delay={240 + i * 90}>
+                <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-zinc-200 text-sm font-medium">{cat.category}</span>
+                  </div>
+                  <ScoreBar score={cat.score} />
+                  {cat.notes && <p className="text-zinc-500 text-xs">{cat.notes}</p>}
                 </div>
-                <ScoreBar score={cat.score} />
-                {cat.notes && <p className="text-zinc-500 text-xs">{cat.notes}</p>}
-              </div>
+              </Reveal>
             ))}
           </div>
         </section>

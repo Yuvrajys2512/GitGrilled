@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FileCode2, ChevronRight } from "lucide-react";
 import { highlightLine } from "@/lib/highlight";
 
@@ -31,26 +31,54 @@ interface Props {
   line: number;
   endLine: number | null;
   label: string;
+  // Start expanded and eagerly load the snippet (used by the bug-hunt card so
+  // the challenge code is on screen immediately).
+  defaultOpen?: boolean;
 }
 
-export function CodeCitation({ repo, branch, path, line, endLine, label }: Props) {
-  const [open, setOpen] = useState(false);
+export function CodeCitation({ repo, branch, path, line, endLine, label, defaultOpen = false }: Props) {
+  const [open, setOpen] = useState(defaultOpen);
   const [state, setState] = useState<"idle" | "loading" | "loaded" | "error">("idle");
   const [lines, setLines] = useState<string[]>([]);
 
-  async function toggle() {
-    const next = !open;
-    setOpen(next);
-    if (next && state === "idle") {
-      setState("loading");
+  async function load() {
+    if (state !== "idle") return;
+    setState("loading");
+    const content = await fetchFile(repo, branch, path);
+    if (content === null) {
+      setState("error");
+    } else {
+      setLines(content.split("\n"));
+      setState("loaded");
+    }
+  }
+
+  // Eagerly load when rendered already-open (bug-hunt card). The fetch runs in
+  // an async callback — not synchronously in the effect body — and bails if the
+  // component unmounts mid-flight.
+  useEffect(() => {
+    if (!defaultOpen) return;
+    let active = true;
+    (async () => {
       const content = await fetchFile(repo, branch, path);
+      if (!active) return;
       if (content === null) {
         setState("error");
       } else {
         setLines(content.split("\n"));
         setState("loaded");
       }
-    }
+    })();
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function toggle() {
+    const next = !open;
+    setOpen(next);
+    if (next) load();
   }
 
   const hi = line;

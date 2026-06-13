@@ -40,10 +40,43 @@ export async function POST(req: Request) {
     messages,
     tools,
     // Allow the interviewer to read/search across a few tool calls before
-    // it produces the next question. Tool steps emit no text; only the final
-    // answer streams to the client.
+    // it produces the next question.
     stopWhen: stepCountIs(5),
   });
 
-  return result.toTextStreamResponse();
+  // We stream NDJSON events instead of plain text so the client can show a live
+  // "reading your code" trace: each tool call the interviewer makes (readFile /
+  // searchCode / listFiles) is surfaced as it happens, then the answer text
+  // streams in. One JSON object per line:
+  //   {"t":"tool","name":"readFile","input":{"path":"lib/x.ts"}}
+  //   {"t":"text","v":"...delta..."}
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (obj: unknown) =>
+        controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
+      try {
+        for await (const part of result.fullStream) {
+          if (part.type === "tool-call") {
+            send({ t: "tool", name: part.toolName, input: part.input });
+          } else if (part.type === "text-delta") {
+            send({ t: "text", v: part.text });
+          } else if (part.type === "error") {
+            send({ t: "error" });
+          }
+        }
+      } catch {
+        send({ t: "error" });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+  });
 }

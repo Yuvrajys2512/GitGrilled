@@ -37,6 +37,7 @@ Rules:
 - Be specific: reference actual answers they gave, not generic impressions
 - fumbledQuestions should quote or closely paraphrase what the candidate actually said
 - Don't inflate scores because they were "trying" — evaluate what they demonstrated
+- If the transcript contains a [BUG_HUNT] challenge, explicitly judge whether the candidate found and correctly explained the bug — catching it is a strong positive signal; missing it belongs in weakAreas
 - If they dodged a question, noted it as a weak area
 - The "roast" is a single brutal, funny one-liner for a shareable card — make it land. Roast the candidate's actual performance (vagueness, dodges, hand-waving), never anything personal. The harsher the score, the harsher the burn; a strong performance gets a cocky, begrudging-respect burn instead`;
 
@@ -47,12 +48,18 @@ interface ConversationTurn {
 
 export function buildDebriefPrompt(
   profile: ProjectProfile,
-  conversation: ConversationTurn[]
+  conversation: ConversationTurn[],
+  hintsUsed = 0
 ): string {
   const transcript = conversation
-    .filter((m) => m.content !== "__BEGIN__")
+    .filter((m) => m.content !== "__BEGIN__" && m.content !== "__HINT__")
     .map((m) => `${m.role === "user" ? "CANDIDATE" : "INTERVIEWER"}: ${m.content}`)
     .join("\n\n");
+
+  const hintNote =
+    hintsUsed > 0
+      ? `\nThe candidate asked for ${hintsUsed} hint${hintsUsed === 1 ? "" : "s"} during the interview (each marked [HINT]). Needing hints to reach an answer signals weaker independent understanding — factor it into the score and call it out if it was significant.\n`
+      : "";
 
   return `PROJECT: ${profile.summary}
 
@@ -60,7 +67,7 @@ Stack: ${profile.stack.language}${profile.stack.framework ? ` / ${profile.stack.
 
 Probe areas that were intended:
 ${profile.probeAreas.map((a) => `- ${a.topic} [${a.difficulty}]`).join("\n")}
-
+${hintNote}
 === INTERVIEW TRANSCRIPT ===
 
 ${transcript}

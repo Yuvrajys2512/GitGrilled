@@ -40,8 +40,11 @@ export async function POST(req: NextRequest) {
   // Profile is deterministic-ish for a given commit, so cache it per tree SHA.
   // Skips the LLM call entirely on repeat visits and "Try Again". No-ops when
   // Upstash isn't configured.
+  // Cache key carries a schema version: bump it when the profile shape changes
+  // (e.g. adding bugHunts) so stale entries that predate the new fields are
+  // ignored instead of failing the client's strict safeParse.
   const cacheKey = context.sha
-    ? `profile:${context.owner}/${context.repo}@${context.sha}`
+    ? `profile:v2:${context.owner}/${context.repo}@${context.sha}`
     : null;
   if (cacheKey) {
     const cached = await kvGetJSON<ProjectProfile>(cacheKey);

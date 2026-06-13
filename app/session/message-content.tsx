@@ -9,11 +9,13 @@ interface Props {
   owner: string;
   repo: string;
   branch: string;
+  // Render every code citation already expanded (used by the bug-hunt card).
+  autoExpand?: boolean;
 }
 
 // Renders an interviewer message, turning every "path:line" reference into a
 // clickable, expandable code snippet pulled from the real repo.
-export function MessageContent({ text, owner, repo, branch }: Props) {
+export function MessageContent({ text, owner, repo, branch, autoExpand = false }: Props) {
   const tokens = parseMessage(text);
   const repoSlug = `${owner}/${repo}`;
 
@@ -31,6 +33,7 @@ export function MessageContent({ text, owner, repo, branch }: Props) {
             line={tok.line}
             endLine={tok.endLine}
             label={tok.raw}
+            defaultOpen={autoExpand}
           />
         )
       )}

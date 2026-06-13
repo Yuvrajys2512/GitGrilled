@@ -19,6 +19,7 @@ export async function POST(req: Request) {
   const body = await req.json();
   const profile: ProjectProfile = body.profile;
   const conversation: ConversationTurn[] = body.conversation ?? [];
+  const hintsUsed: number = typeof body.hintsUsed === "number" ? body.hintsUsed : 0;
 
   if (!profile || conversation.length === 0) {
     return Response.json({ error: "Missing profile or conversation" }, { status: 400 });
@@ -32,7 +33,7 @@ export async function POST(req: Request) {
         model: groq(DEBRIEF_MODEL),
         schema: debriefSchema,
         system: DEBRIEF_SYSTEM_PROMPT,
-        prompt: buildDebriefPrompt(profile, conversation),
+        prompt: buildDebriefPrompt(profile, conversation, hintsUsed),
       });
       return Response.json(object);
     } catch (err) {
