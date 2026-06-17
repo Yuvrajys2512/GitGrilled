@@ -20,7 +20,11 @@ export async function POST(req: Request) {
   } catch {
     return Response.json({ error: "Invalid body" }, { status: 400 });
   }
-  if (!card?.owner || !card?.repo) {
+  const categoriesValid =
+    card?.categories === undefined ||
+    (Array.isArray(card.categories) &&
+      card.categories.every((c) => c && typeof c.name === "string" && typeof c.score === "number"));
+  if (!card?.owner || !card?.repo || !categoriesValid) {
     return Response.json({ error: "Invalid scorecard" }, { status: 400 });
   }
 

@@ -33,16 +33,16 @@ export async function POST(req: Request) {
   }
 
   const { tools } = createRepoTools(owner, repo, branch);
+  const groq = createGroq();
+  const system = buildInterviewerSystemPrompt(profile, fileTree, persona);
 
-  const result = streamText({
-    model: createGroq()(INTERVIEW_MODEL),
-    system: buildInterviewerSystemPrompt(profile, fileTree, persona),
-    messages,
-    tools,
-    // Allow the interviewer to read/search across a few tool calls before
-    // it produces the next question.
-    stopWhen: stepCountIs(5),
-  });
+  // Groq's tool-calling occasionally rejects its own generated function call
+  // ("Failed to call a function. Please adjust your prompt.") — a transient
+  // error, not a bad request. As long as nothing has reached the client yet,
+  // it's safe to silently retry with a fresh streamText call. Once any part
+  // has been forwarded, a retry would replay/duplicate output, so at that
+  // point a failure is surfaced as a stream error instead.
+  const MAX_ATTEMPTS = 6;
 
   // We stream NDJSON events instead of plain text so the client can show a live
   // "reading your code" trace: each tool call the interviewer makes (readFile /
@@ -55,21 +55,43 @@ export async function POST(req: Request) {
     async start(controller) {
       const send = (obj: unknown) =>
         controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
-      try {
-        for await (const part of result.fullStream) {
-          if (part.type === "tool-call") {
-            send({ t: "tool", name: part.toolName, input: part.input });
-          } else if (part.type === "text-delta") {
-            send({ t: "text", v: part.text });
-          } else if (part.type === "error") {
-            send({ t: "error" });
+      let sentAny = false;
+      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+        const result = streamText({
+          model: groq(INTERVIEW_MODEL),
+          system,
+          messages,
+          tools,
+          // Allow the interviewer to read/search across a few tool calls before
+          // it produces the next question.
+          stopWhen: stepCountIs(5),
+        });
+        let attemptFailed = false;
+        try {
+          for await (const part of result.fullStream) {
+            if (part.type === "tool-call") {
+              send({ t: "tool", name: part.toolName, input: part.input });
+              sentAny = true;
+            } else if (part.type === "text-delta") {
+              send({ t: "text", v: part.text });
+              sentAny = true;
+            } else if (part.type === "error") {
+              attemptFailed = true;
+              break;
+            }
           }
+        } catch {
+          attemptFailed = true;
         }
-      } catch {
-        send({ t: "error" });
-      } finally {
-        controller.close();
+        if (!attemptFailed) break;
+        if (sentAny) {
+          send({ t: "error" });
+          break;
+        }
+        // Nothing sent yet — safe to loop and try again on a fresh attempt.
+        if (attempt === MAX_ATTEMPTS - 1) send({ t: "error" });
       }
+      controller.close();
     },
   });
 

@@ -21,7 +21,9 @@ export async function GET(req: Request) {
   const repo = card?.repo ?? "repo";
   const score = card?.score ?? 0;
   const verdict = card?.verdict ?? "";
-  const categories = (card?.categories ?? []).slice(0, 4);
+  const categories = (card?.categories ?? [])
+    .filter((c) => c && typeof c.name === "string" && typeof c.score === "number")
+    .slice(0, 4);
   const color = scoreColor(score);
 
   // Roast mode renders a bolder, meme-style burn card built for screenshots.
