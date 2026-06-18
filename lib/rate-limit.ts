@@ -5,6 +5,8 @@
 // Otherwise it falls back to an in-memory fixed window — good enough for local
 // dev and single-instance deployments, and it never throws.
 
+import { log, errMessage } from "./log";
+
 export interface RateResult {
   success: boolean;
   limit: number;
@@ -72,8 +74,10 @@ export async function rateLimit(key: string, limit: number, windowMs: number): P
   if (upstashConfigured()) {
     try {
       return await upstashLimit(key, limit, windowMs);
-    } catch {
+    } catch (err) {
       // Never let a limiter outage take down the route — degrade to in-memory.
+      // Surface it: degraded limiting is per-instance and weaker, worth knowing.
+      log.warn("ratelimit.upstash_unavailable", { error: errMessage(err) });
       return memoryLimit(key, limit, windowMs);
     }
   }
@@ -81,10 +85,26 @@ export async function rateLimit(key: string, limit: number, windowMs: number): P
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────
+/**
+ * Best-effort trusted client IP for rate-limit keys.
+ *
+ * The leftmost entry of `x-forwarded-for` is client-controlled — anyone can
+ * send `x-forwarded-for: 1.2.3.4` to mint a fresh limit bucket per request and
+ * bypass the limiter. On Vercel the platform overwrites `x-real-ip` with the
+ * true connecting peer (a client can't forge it), so we prefer that. As a
+ * fallback we take the *rightmost* x-forwarded-for hop (the one appended by the
+ * closest trusted proxy) rather than the spoofable leftmost one.
+ */
 export function clientId(req: Request): string {
+  const real = req.headers.get("x-real-ip");
+  if (real) return real.trim();
+
   const fwd = req.headers.get("x-forwarded-for");
-  if (fwd) return fwd.split(",")[0].trim();
-  return req.headers.get("x-real-ip") ?? "anon";
+  if (fwd) {
+    const hops = fwd.split(",").map((h) => h.trim()).filter(Boolean);
+    if (hops.length) return hops[hops.length - 1];
+  }
+  return "anon";
 }
 
 const WINDOW_MS = 60_000;

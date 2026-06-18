@@ -5,6 +5,13 @@ const RAW_BASE = "https://raw.githubusercontent.com";
 
 const MAX_FILES = 35;
 const MAX_FILE_CHARS = 5_000;
+// Hard ceiling on the combined size of fetched file bodies, independent of the
+// per-file/per-count caps. Guards pathological repos (e.g. 35 files that are
+// each near MAX_FILE_CHARS) from blowing the token budget sent to Groq.
+const MAX_TOTAL_CONTENT_CHARS = 120_000;
+// Abort outbound GitHub calls that hang so a stuck connection can't pin a
+// serverless function for its whole execution budget.
+const FETCH_TIMEOUT_MS = 10_000;
 
 const EXCLUDED_DIRS = new Set([
   "node_modules", ".git", "dist", "build", ".next", "__pycache__",
@@ -116,6 +123,7 @@ async function ghFetch(url: string) {
   const res = await fetch(url, {
     headers: authHeaders(),
     next: { revalidate: 300 },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
   if (res.status === 404) throw new Error("REPO_NOT_FOUND");
   if (res.status === 403 || res.status === 429) throw new Error("RATE_LIMITED");
@@ -131,7 +139,10 @@ async function fetchFileContent(
 ): Promise<RepoFile | null> {
   try {
     const url = `${RAW_BASE}/${owner}/${repo}/${branch}/${path}`;
-    const res = await fetch(url, { next: { revalidate: 300 } });
+    const res = await fetch(url, {
+      next: { revalidate: 300 },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
     if (!res.ok) return null;
     const raw = await res.text();
     // Skip files that look binary despite extension check
@@ -182,13 +193,20 @@ export async function buildRepoContext(
     .sort((a, b) => getFilePriority(a.path) - getFilePriority(b.path))
     .slice(0, MAX_FILES);
 
-  // Fetch in parallel batches of 10
+  // Fetch in parallel batches of 10, stopping once the combined content budget
+  // is hit so a repo full of large files can't blow the token budget.
   const BATCH = 10;
   const fetched: RepoFile[] = [];
+  let totalChars = 0;
   for (let i = 0; i < eligible.length; i += BATCH) {
     const batch = eligible.slice(i, i + BATCH).map((f) => f.path);
     const results = await fetchBatch(owner, repo, defaultBranch, batch);
-    fetched.push(...results.filter((r): r is RepoFile => r !== null));
+    for (const r of results) {
+      if (r === null) continue;
+      fetched.push(r);
+      totalChars += r.content.length;
+    }
+    if (totalChars >= MAX_TOTAL_CONTENT_CHARS) break;
   }
 
   let readme: string | null = null;
@@ -269,7 +287,10 @@ export async function fetchRawFile(
 ): Promise<string | null> {
   try {
     const url = `${RAW_BASE}/${owner}/${repo}/${branch}/${encodeURI(path)}`;
-    const res = await fetch(url, { next: { revalidate: 300 } });
+    const res = await fetch(url, {
+      next: { revalidate: 300 },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
     if (!res.ok) return null;
     const raw = await res.text();
     if (raw.includes("\x00")) return null;

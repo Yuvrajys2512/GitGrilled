@@ -12,10 +12,46 @@ function scoreColor(score: number): string {
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  const card = await loadScorecard({
-    id: searchParams.get("id") ?? undefined,
-    d: searchParams.get("d") ?? undefined,
-  });
+  const idParam = searchParams.get("id") ?? undefined;
+  const dParam = searchParams.get("d") ?? undefined;
+
+  // No scorecard requested → this is the site/landing preview. Render a branded
+  // marketing card instead of a hollow "unknown/repo 0/10" scorecard.
+  if (!idParam && !dParam) {
+    return new ImageResponse(
+      (
+        <div
+          style={{
+            width: "1200px",
+            height: "630px",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+            backgroundColor: "#0c0a09",
+            backgroundImage:
+              "radial-gradient(circle at 85% 10%, rgba(251,146,60,0.20), transparent 55%), radial-gradient(circle at 5% 95%, rgba(220,38,38,0.16), transparent 50%)",
+            padding: "80px",
+            fontFamily: "monospace",
+            color: "#fafafa",
+            gap: "28px",
+          }}
+        >
+          <div style={{ display: "flex", fontSize: "40px", color: "#fb923c", fontWeight: 800 }}>
+            🔥 GitGrilled
+          </div>
+          <div style={{ display: "flex", fontSize: "84px", fontWeight: 900, lineHeight: 1.05, maxWidth: "1000px" }}>
+            Get interviewed on your own code.
+          </div>
+          <div style={{ display: "flex", fontSize: "32px", color: "#a8a29e", maxWidth: "920px", lineHeight: 1.35 }}>
+            Drop in a GitHub repo. The AI reads the whole codebase and grills you like a senior engineer — then scores you.
+          </div>
+        </div>
+      ),
+      { width: 1200, height: 630 }
+    );
+  }
+
+  const card = await loadScorecard({ id: idParam, d: dParam });
 
   const owner = card?.owner ?? "unknown";
   const repo = card?.repo ?? "repo";

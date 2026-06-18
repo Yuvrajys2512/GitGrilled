@@ -106,13 +106,27 @@ function pickInterviewerVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVo
   if (voices.length === 0) return null;
   const english = voices.filter((v) => v.lang.toLowerCase().startsWith("en"));
   const pool = english.length > 0 ? english : voices;
-  // Prefer a deeper / more natural-sounding voice for the "senior engineer" feel.
-  const preferred = ["Daniel", "Google UK English Male", "Microsoft Guy", "Alex", "Microsoft David"];
+  // Aim for a calm, refined British male voice (a Jarvis-like read) and fall
+  // back to other natural male voices. British male first:
+  //   Google UK English Male (Chrome/Edge), Microsoft Ryan/George (Win en-GB),
+  //   Daniel/Arthur (macOS en-GB); then deeper en-US voices as a last resort.
+  const preferred = [
+    "Google UK English Male",
+    "Microsoft Ryan",
+    "Microsoft George",
+    "Daniel",
+    "Arthur",
+    "Microsoft Guy",
+    "Alex",
+    "Microsoft David",
+  ];
   for (const name of preferred) {
     const match = pool.find((v) => v.name.includes(name));
     if (match) return match;
   }
-  return pool[0];
+  // No named match — prefer any en-GB voice for the accent, else the first.
+  const gb = pool.find((v) => v.lang.toLowerCase() === "en-gb");
+  return gb ?? pool[0];
 }
 
 export function useSpeaker() {
@@ -201,8 +215,9 @@ export function useSpeaker() {
       window.speechSynthesis.cancel();
       const utter = new SpeechSynthesisUtterance(text);
       if (voiceRef.current) utter.voice = voiceRef.current;
-      utter.rate = 1.02;
-      utter.pitch = 0.95;
+      // Slightly slower + lower for a calm, measured, composed delivery.
+      utter.rate = 0.95;
+      utter.pitch = 0.9;
       utter.onstart = () => setSpeaking(true);
       utter.onend = () => setSpeaking(false);
       utter.onerror = () => setSpeaking(false);

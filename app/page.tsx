@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { RepoInput } from "@/components/repo-input";
 import { Badge } from "@/components/ui/badge";
 
@@ -51,6 +52,15 @@ export default function Home() {
         </div>
 
       </div>
+
+      <footer className="mt-16 text-center text-xs text-zinc-600">
+        <p>
+          AI-generated — analysis and scores may be wrong.{" "}
+          <Link href="/privacy" className="underline underline-offset-2 hover:text-zinc-400">
+            Privacy &amp; disclaimer
+          </Link>
+        </p>
+      </footer>
     </main>
   );
 }

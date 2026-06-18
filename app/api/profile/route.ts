@@ -8,6 +8,7 @@ import {
 } from "@/lib/profile";
 import { enforce } from "@/lib/rate-limit";
 import { kvGetJSON, kvSetJSON } from "@/lib/kv";
+import { log, errMessage } from "@/lib/log";
 import type { RepoContext } from "@/lib/types";
 import type { ProjectProfile } from "@/lib/profile";
 
@@ -69,7 +70,11 @@ export async function POST(req: NextRequest) {
         if (cacheKey) await kvSetJSON(cacheKey, object, PROFILE_TTL);
         return Response.json(object, { headers: { "X-Cache": "MISS" } });
       } catch (err) {
-        console.error(`[profile] ${model} attempt ${attempt + 1}`, err instanceof Error ? err.message : err);
+        log.error("profile.generate_failed", {
+          model,
+          attempt: attempt + 1,
+          error: errMessage(err),
+        });
       }
     }
   }

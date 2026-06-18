@@ -72,17 +72,19 @@ get these set before launch, not after.
 The rate limiter (`lib/rate-limit.ts`) and per-route limits (`b28a005`) are
 already solid. What's left is closing gaps an anonymous public tool invites.
 
-- [ ] Add a max-repo-size / file-count guard before ingestion (`lib/github.ts`
-      already caps at `MAX_FILES = 35` / `MAX_FILE_CHARS = 5_000` per file —
-      confirm this also bounds *total* tokens sent to Groq for pathological
-      repos, e.g. monorepos with thousands of top-level files)
-- [ ] Add a request timeout on outbound GitHub fetches so a hung connection
-      can't pin a function for its full duration
-- [ ] Re-check `clientId()` in `lib/rate-limit.ts` — `x-forwarded-for` is
-      trivially spoofable by clients hitting the origin directly; on Vercel
-      prefer `req.headers.get("x-vercel-ip")`-style trusted headers or
-      Vercel's own `ip` if exposed, so rate limiting can't be bypassed by
-      just setting a header
+- [x] Add a max-repo-size / file-count guard before ingestion — added
+      `MAX_TOTAL_CONTENT_CHARS = 120_000` in `lib/github.ts`; the batch fetch
+      loop now stops once combined file content hits that ceiling, so a repo of
+      35 near-max files (or a pathological monorepo) can't blow the Groq token
+      budget. Per-file (`MAX_FILE_CHARS`) and count (`MAX_FILES`) caps unchanged
+- [x] Add a request timeout on outbound GitHub fetches — all three fetch paths
+      (`ghFetch`, `fetchFileContent`, `fetchRawFile`) now pass
+      `AbortSignal.timeout(10_000)` so a hung connection can't pin a function
+- [x] Re-check `clientId()` in `lib/rate-limit.ts` — the leftmost
+      `x-forwarded-for` hop is client-spoofable (mint a fresh limit bucket per
+      request). Now prefers `x-real-ip` (Vercel overwrites this with the true
+      peer; a client can't forge it), falling back to the *rightmost*
+      x-forwarded-for hop instead of the spoofable leftmost one
 - [x] Confirm no API route trusts client-supplied data it didn't generate
       itself — found via live smoke testing: `/api/scorecard` accepted any
       `categories` shape and `/api/og` crashed with an unhandled 500 reading
@@ -92,10 +94,17 @@ already solid. What's left is closing gaps an anonymous public tool invites.
       degrade gracefully. `/api/debrief`'s `profile`/`conversation` input is
       still unvalidated against the Zod schemas — same class of risk, lower
       severity since a bad shape there fails the LLM call rather than
-      corrupting stored/shared state. Worth the same treatment later.
-- [ ] Add CORS lockdown if these API routes don't need to be called
-      cross-origin (default Next.js same-origin is fine — just confirm no
-      `Access-Control-Allow-Origin: *` was added anywhere)
+      corrupting stored/shared state. **Done now:** `/api/debrief` validates
+      `profile` against `projectProfileSchema` and `conversation` against a Zod
+      turn schema (`safeParse` → 400 on malformed input) before any Groq call.
+- [x] Add CORS lockdown if these API routes don't need to be called
+      cross-origin — confirmed via grep: no `Access-Control-Allow-Origin` is
+      set anywhere in the app. Default Next.js same-origin behavior is intact;
+      nothing to lock down
+- [x] Harden remaining API routes for consistency — `/api/file` now rejects
+      path-traversal/absolute `path` values (user input flows into a raw
+      GitHub URL); `/api/speak` got a 15s outbound timeout + structured
+      logging on TTS upstream failures (previously silent)
 - [x] Run `npm audit` and resolve high/critical findings — fixed via
       `npm audit fix` (`hono`/`js-yaml`, both devDependency tooling from
       `eslint`/`shadcn` CLI, not in the runtime bundle). One moderate finding
@@ -111,20 +120,26 @@ already solid. What's left is closing gaps an anonymous public tool invites.
 
 ## Phase 4 — SEO, Branding & Metadata
 
-- [ ] Replace default Next.js placeholder icons in `public/` (`next.svg`,
-      `vercel.svg`, `file.svg`, `globe.svg`, `window.svg` are scaffold
-      leftovers) with real GitGrilled branding or remove if unused
-- [ ] Add a real favicon (currently the default `app/favicon.ico`)
-- [ ] Add `app/robots.ts` and `app/sitemap.ts` (Next.js file-based — neither
-      exists yet)
-- [ ] Verify the static OG image / metadata in `app/layout.tsx` covers the
-      landing page itself, not just the dynamic `/api/og` scorecard route
-      (add `openGraph` / `twitter` fields to `metadata` if missing)
-- [ ] Test the dynamic OG image (`app/api/og/route.tsx`) renders correctly
-      when shared on actual Twitter/X, LinkedIn, Slack, and Discord (each
-      caches/crops differently — use their respective debug/preview tools)
-- [ ] Add a short, human meta description distinct from the dev-facing one
-      currently in `metadata.description`
+- [x] Replace default Next.js placeholder icons in `public/` — removed all five
+      scaffold SVGs (`next/vercel/file/globe/window.svg`); confirmed none were
+      referenced in source. `public/` is now empty (favicon lives in `app/`)
+- [x] Add a real favicon — removed the default `app/favicon.ico` and added
+      generated brand-mark icons via `app/icon.tsx` (32px favicon) and
+      `app/apple-icon.tsx` (180px iOS), a "G" in flame-orange on near-black
+- [x] Add `app/robots.ts` and `app/sitemap.ts` — both added. robots allows `/`,
+      disallows `/api/`, `/session`, `/scorecard`; sitemap lists the landing
+      page only (session/scorecard are per-run, query-param driven). Origin
+      comes from the new shared `lib/site.ts` `siteUrl()` helper
+- [x] Verify the static OG image / metadata covers the landing page itself —
+      added `openGraph` + `twitter` metadata to `app/layout.tsx`, and
+      `/api/og` now renders a branded marketing card when called with no
+      scorecard params (was rendering a hollow "unknown/repo 0/10" card)
+- [ ] Test the dynamic OG image renders correctly when shared on actual
+      Twitter/X, LinkedIn, Slack, and Discord — still needs a manual pass with
+      their preview/debug tools after deploy
+- [x] Add a short, human meta description distinct from the dev-facing one —
+      rewrote `metadata.description` to a human, share-facing sentence; shared
+      across OG/Twitter tags
 
 ---
 
@@ -136,16 +151,22 @@ not silent API failures or Groq/GitHub outages).
 
 - [ ] Add an error tracking service (Sentry's Vercel integration is the path
       of least resistance) so failed `/api/*` routes surface somewhere other
-      than a user's console
-- [ ] Add basic analytics (Vercel Analytics is a one-line add, or Plausible/
-      PostHog if you want funnel data: landing → analyze → interview → debrief)
-- [ ] Log (structured, not `console.log` spam) key failure points: GitHub
-      404/403/429, Groq errors, Upstash unavailability — these currently
-      either degrade silently or bubble as generic 500s
+      than a user's console — still needs the dashboard install
+- [x] Add basic analytics — wired `@vercel/analytics` + `@vercel/speed-insights`
+      into `app/layout.tsx` (cookieless). Flip on Web Analytics + Speed Insights
+      in the Vercel dashboard to start collecting; disclosed on `/privacy`
+- [x] Log (structured, not `console.log` spam) key failure points — added
+      `lib/log.ts` (JSON-line structured logger + `errMessage` helper) and
+      wired it into the real failure points: GitHub fetch errors / rate limits
+      (`/api/analyze`), Groq generation failures (`/api/profile`, `/api/debrief`),
+      interview retry/exhaustion (`/api/interview` — so the residual failure
+      rate is finally observable), and Upstash limiter outages (`lib/rate-limit.ts`)
 - [ ] Set up a Vercel deployment notification (Slack/email) so failed builds
       don't go unnoticed
-- [ ] Add a `/api/health` or similar lightweight check if you want external
-      uptime monitoring (UptimeRobot/Better Uptime) pinging the live URL
+- [x] Add a `/api/health` lightweight check — added `app/api/health/route.ts`;
+      reports groq/github/redis status (pings Upstash with a 3s timeout),
+      returns 200 healthy / 503 degraded, never leaks secret values. Point an
+      external uptime monitor at it
 
 ---
 
@@ -197,11 +218,13 @@ Public tool, takes a GitHub URL, requests camera/mic permission, processes
 third-party code through a third-party LLM API — minimal disclosure is
 warranted even for a side project.
 
-- [ ] Add a short Privacy note: what's sent to Groq (repo file contents),
-      what's stored (scorecards in Redis, if configured), what isn't (no
-      webcam/mic data leaves the browser)
-- [ ] Add a one-line disclaimer that analysis is AI-generated and may be
-      wrong (covers you for bad "grilling" advice taken too seriously)
+- [x] Add a short Privacy note — added `app/privacy/page.tsx` covering what's
+      sent to Groq (public repo file contents + answers), what's stored
+      (shared scorecards 30d, brief analysis cache), and what never leaves the
+      browser (camera/mic streams). Linked from the landing-page footer
+- [x] Add a one-line disclaimer that analysis is AI-generated and may be wrong
+      — landing-page footer carries the disclaimer + privacy link, and the
+      privacy page restates it more fully
 - [ ] If targeting EU/UK visitors at all, a minimal cookie/analytics notice
       if you add Phase 5 analytics that use cookies
 
@@ -212,8 +235,10 @@ warranted even for a side project.
 No `.github/workflows` exist yet — currently everything ships straight from
 local `npm run build` / Vercel's own build step.
 
-- [ ] Add a GitHub Actions workflow: `npm run lint` + `npx tsc --noEmit` +
-      `npm run build` on every PR, so broken code can't merge to `main`
+- [x] Add a GitHub Actions workflow — `.github/workflows/ci.yml` runs
+      `npm run lint` + `npx tsc --noEmit` + `npm run build` on every PR to
+      `main` and on pushes to `main` (Node 24, npm cache, dummy build-time
+      `GROQ_API_KEY`). All three pass locally as of this session
 - [ ] Confirm Vercel's Git integration is connected to this repo with
       production = `main` and preview deployments on every PR (if not already)
 - [ ] Decide branch protection on `main` (require the CI check above to pass)

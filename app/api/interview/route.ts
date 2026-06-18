@@ -3,6 +3,7 @@ import { createGroq } from "@ai-sdk/groq";
 import { buildInterviewerSystemPrompt } from "@/lib/interview";
 import { createRepoTools } from "@/lib/repo-tools";
 import { enforce } from "@/lib/rate-limit";
+import { log, errMessage } from "@/lib/log";
 import type { ProjectProfile } from "@/lib/profile";
 import type { PersonaId } from "@/lib/personas";
 import type { ModelMessage } from "ai";
@@ -67,6 +68,7 @@ export async function POST(req: Request) {
           stopWhen: stepCountIs(5),
         });
         let attemptFailed = false;
+        let failReason = "stream_exception";
         try {
           for await (const part of result.fullStream) {
             if (part.type === "tool-call") {
@@ -77,19 +79,32 @@ export async function POST(req: Request) {
               sentAny = true;
             } else if (part.type === "error") {
               attemptFailed = true;
+              failReason = errMessage(part.error);
               break;
             }
           }
-        } catch {
+        } catch (err) {
           attemptFailed = true;
+          failReason = errMessage(err);
         }
         if (!attemptFailed) break;
+        log.warn("interview.attempt_failed", {
+          model: INTERVIEW_MODEL,
+          attempt: attempt + 1,
+          sentAny,
+          reason: failReason,
+        });
         if (sentAny) {
+          // Output already streamed — can't safely replay, so surface the error.
+          log.error("interview.failed_midstream", { model: INTERVIEW_MODEL, reason: failReason });
           send({ t: "error" });
           break;
         }
         // Nothing sent yet — safe to loop and try again on a fresh attempt.
-        if (attempt === MAX_ATTEMPTS - 1) send({ t: "error" });
+        if (attempt === MAX_ATTEMPTS - 1) {
+          log.error("interview.exhausted_retries", { model: INTERVIEW_MODEL, attempts: MAX_ATTEMPTS });
+          send({ t: "error" });
+        }
       }
       controller.close();
     },

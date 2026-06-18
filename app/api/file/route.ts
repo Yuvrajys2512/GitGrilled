@@ -17,6 +17,13 @@ export async function GET(req: Request) {
     return Response.json({ error: "Missing repo or path" }, { status: 400 });
   }
 
+  // The path is user-supplied and gets appended to a raw.githubusercontent URL.
+  // Reject traversal / absolute paths so it can't be normalized into a
+  // different repo or branch on the host.
+  if (path.startsWith("/") || path.split("/").includes("..")) {
+    return Response.json({ error: "Invalid path" }, { status: 400 });
+  }
+
   const content = await fetchRawFile(owner, name, branch, path);
   if (content === null) {
     return Response.json({ error: "File not found" }, { status: 404 });

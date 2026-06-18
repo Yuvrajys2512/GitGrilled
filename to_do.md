@@ -36,22 +36,25 @@ priority, not strict phase order.
 
 ## High-value next (pick based on what you care about most)
 
-- [ ] **Phase 5 — Observability.** Right now a Groq outage or GitHub 403 just
-      fails silently into a generic error for the user, with nothing on your
-      end. Add Sentry (Vercel's integration is one click) and/or Vercel
-      Analytics so you're not flying blind once real traffic hits.
+- [~] **Phase 5 — Observability.** DONE in code: `lib/log.ts` structured
+      logging wired into all GitHub/Groq/Upstash/interview failure points, a
+      `/api/health` endpoint, and `@vercel/analytics` + `@vercel/speed-insights`
+      in the layout. STILL TODO (dashboard): toggle on Web Analytics + Speed
+      Insights in the Vercel project, and install Sentry's Vercel integration
+      so errors surface off-box.
 - [ ] **Phase 6 — Mobile pass.** Never explicitly tested. Open the landing
       page, session chat, video avatar mode, and scorecard page on an actual
       phone.
-- [ ] **Phase 4 — SEO/branding cleanup.** `public/` still has the default
-      Next.js scaffold icons (`vercel.svg`, `next.svg`, etc.) and there's no
-      `robots.ts` / `sitemap.ts`. Quick, low-risk polish.
-- [ ] **Phase 3 — Remaining hardening.** `clientId()` in `lib/rate-limit.ts`
-      trusts `x-forwarded-for`, which is spoofable — check what Vercel
-      actually exposes for trusted client IP. Also: `/api/debrief` still
-      doesn't validate its `profile`/`conversation` input against the
-      existing Zod schemas (same class of bug as the scorecard one fixed
-      this session, lower severity).
+- [x] **Phase 4 — SEO/branding cleanup.** DONE: removed the scaffold icons,
+      added `app/robots.ts` + `app/sitemap.ts`, added landing OG/Twitter
+      metadata + a branded no-param `/api/og` card + a human meta description.
+      (Still worth a manual share-preview test on Twitter/LinkedIn after deploy,
+      and a real favicon someday.)
+- [x] **Phase 3 — Remaining hardening.** DONE: `clientId()` now prefers the
+      unspoofable `x-real-ip` (rightmost x-forwarded-for fallback);
+      `/api/debrief` validates `profile`/`conversation` with Zod; total-content
+      cap in `lib/github.ts`; 10s timeouts on all outbound GitHub fetches; CORS
+      confirmed locked (none set).
 
 ---
 
@@ -61,12 +64,12 @@ priority, not strict phase order.
       storage long-term (not urgent at current traffic).
 - [ ] Phase 2 / Groq console: set a budget alert so a traffic spike doesn't
       surprise you with a bill.
-- [ ] Phase 7: short privacy note + AI-generated-content disclaimer (public
-      tool takes a GitHub URL, requests camera/mic, sends repo content to a
-      third-party LLM — minimal disclosure is reasonable even for a side
-      project).
-- [ ] Phase 8: GitHub Actions CI (lint + typecheck + build on PRs) — currently
-      nothing blocks a broken PR from merging.
+- [x] Phase 7: short privacy note + AI-generated-content disclaimer — added
+      `app/privacy/page.tsx` + landing-page footer disclaimer/link. (Cookie
+      notice still N/A until cookie-based analytics are added.)
+- [x] Phase 8: GitHub Actions CI (lint + typecheck + build on PRs) — added
+      `.github/workflows/ci.yml`. STILL TODO (dashboard): turn on branch
+      protection on `main` to *require* this check before merge.
 - [ ] Phase 9: custom domain, if you want one (current `*.vercel.app` URL
       works fine for a soft launch).
 - [ ] Phase 10: soft-launch to a small group first and watch error
